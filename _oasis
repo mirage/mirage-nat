@@ -1,0 +1,24 @@
+OASISFormat: 0.4
+Name: ocaml-nat
+Version: 0.0.1
+Synopsis: an embryonic NAT module
+Authors: Mindy Preston (meetup@yomimono.org)
+License: ISC
+Plugins: META (0.4), DevFiles (0.4)
+BuildTools: ocamlbuild
+
+Description: rewrite packets to support translation between external and internal address space
+
+Library nat
+  Path: lib
+  Modules: Nat
+  BuildDepends: ipaddr, tcpip
+
+Executable test_nat
+  Path: lib_test
+  MainIs: test_nat.ml
+  ByteOpt: -g
+  BuildDepends: oUnit, quickcheck, nat
+
+Test test_nat
+  Command: $test_nat

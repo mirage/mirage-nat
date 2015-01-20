@@ -1,0 +1,13 @@
+Makefile
+lib/META
+*.byte
+setup.*
+opam/
+myocamlbuild.ml
+log/
+*.mllib
+*.mldylib
+_build
+_tags
+configure
+*.swp
