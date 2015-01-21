@@ -19,11 +19,22 @@ let lookup table proto addr port = try Some (Hashtbl.find table (addr, port,
                                                                  proto))
   with Not_found -> None
 
+(* cases that should result in a valid mapping: 
+   neither side is already mapped
+   both sides are already mapped to each other (currently this would be a noop,
+but there may in the future be more state associated with these entries that
+  then should be updated) *)
 let insert table proto (left_ip, left_port) (right_ip, right_port) =
+  let l = (left_ip, left_port, proto) in
+  let r = (right_ip, right_port, proto) in
+  let open Hashtbl in
   (* TODO: this is subject to race conditions *)
-  Hashtbl.replace table (left_ip, left_port, proto) (right_ip, right_port);
-  Hashtbl.replace table (right_ip, right_port, proto) (left_ip, left_port);
-  table
+  match mem table l, mem table r with
+  | false, false ->
+    add table (right_ip, right_port, proto) (left_ip, left_port); 
+    add table (left_ip, left_port, proto) (right_ip, right_port); 
+    table
+  | _, _ -> table
 
 let delete table proto (left_ip, left_port) (right_ip, right_port) =
   (* TODO: this is subject to race conditions *)
