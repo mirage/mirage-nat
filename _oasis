@@ -9,16 +9,16 @@ BuildTools: ocamlbuild
 
 Description: rewrite packets to support translation between external and internal address space
 
-Library nat
+Library mirage_nat
   Path: lib
-  Modules: Nat
+  Modules: Lookup 
   BuildDepends: ipaddr, tcpip
 
 Executable test_nat
   Path: lib_test
   MainIs: test_nat.ml
   ByteOpt: -g
-  BuildDepends: oUnit, quickcheck, nat
+  BuildDepends: oUnit, quickcheck, mirage_nat
 
 Test test_nat
   Command: $test_nat
