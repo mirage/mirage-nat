@@ -29,6 +29,7 @@ let insert table proto (left_ip, left_port) (right_ip, right_port) =
   let r = (right_ip, right_port, proto) in
   let open Hashtbl in
   (* TODO: this is subject to race conditions *)
+  (* needs Lwt.join *)
   match mem table l, mem table r with
   | false, false ->
     add table (right_ip, right_port, proto) (left_ip, left_port); 
@@ -38,6 +39,7 @@ let insert table proto (left_ip, left_port) (right_ip, right_port) =
 
 let delete table proto (left_ip, left_port) (right_ip, right_port) =
   (* TODO: this is subject to race conditions *)
+  (* needs Lwt.join *)
   Hashtbl.remove table (left_ip, left_port, proto);
   Hashtbl.remove table (right_ip, right_port, proto);
   table

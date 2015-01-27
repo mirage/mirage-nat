@@ -137,7 +137,7 @@ let overlapping_updates context =
   in
   assert_equal true (is_consistent t)
 
-let suite = "test-nat" >::: 
+let suite = "test-lookup" >::: 
   [
     "basic lookups work" >:: basic_lookup;
     "crud" >:: crud;
