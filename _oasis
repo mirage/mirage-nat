@@ -14,6 +14,12 @@ Library mirage_nat
   Modules: Lookup, Rewrite
   BuildDepends: ipaddr, tcpip, cstruct
 
+Library arbitrary
+  Path: lib
+  Modules: Arbitrary
+  FindlibParent: mirage_nat
+  BuildDepends: quickcheck, cstruct, ipaddr
+
 Executable test_lookup
   Path: lib_test
   MainIs: test_lookup.ml
@@ -27,7 +33,7 @@ Executable test_rewrite
   Path: lib_test
   MainIs: test_rewrite.ml
   ByteOpt: -g
-  BuildDepends: oUnit, tcpip, quickcheck, mirage_nat
+  BuildDepends: oUnit, tcpip, quickcheck, mirage_nat, arbitrary
 
 Test test_lookup
-  Command: $test_nat
+  Command: $test_rewrite
