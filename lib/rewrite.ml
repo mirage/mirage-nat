@@ -70,17 +70,25 @@ end
 
 type direction = Source | Destination
 
+(* TODO: it's not clear where this function should be, but it probably shouldn't
+   be here in the long run. *)
+let retrieve_ips frame = 
+  let ip_type = Wire_structs.get_ethernet_ethertype frame in
+  let ip_packet = Cstruct.shift frame Wire_structs.sizeof_ethernet in
+  match ip_type with
+  | 0x0800 -> (* ipv4 *) 
+    Some 
+    (Ipaddr.V4 (Ipaddr.V4.of_int32 (Wire_structs.get_ipv4_src ip_packet)), 
+     Ipaddr.V4 (Ipaddr.V4.of_int32 (Wire_structs.get_ipv4_dst ip_packet)))
+  | 0x86dd -> (* ipv6 *)
+    Some 
+    (Ipaddr.V6 (V6.of_cstruct_exn (Wire_structs.Ipv6_wire.get_ipv6_src ip_packet)), 
+     Ipaddr.V6 (V6.of_cstruct_exn (Wire_structs.Ipv6_wire.get_ipv6_dst ip_packet)))
+  | _ -> None
+
 let translate table direction frame =
   (* note that ethif.input doesn't have the same register-listeners-then-input
      format that tcp/udp do, so we could use it for the outer layer of parsing *)
-  let retrieve_ips is_ipv6 ip_packet = 
-    if is_ipv6 then
-      (Ipaddr.V6 (V6.of_cstruct_exn (Wire_structs.Ipv6_wire.get_ipv6_src ip_packet)), 
-       Ipaddr.V6 (V6.of_cstruct_exn (Wire_structs.Ipv6_wire.get_ipv6_dst ip_packet)))
-    else
-      (Ipaddr.V4 (Ipaddr.V4.of_int32 (Wire_structs.get_ipv4_src ip_packet)), 
-       Ipaddr.V4 (Ipaddr.V4.of_int32 (Wire_structs.get_ipv4_dst ip_packet)))
-  in
   let ip_size is_ipv6 = match is_ipv6 with 
     | false -> Wire_structs.sizeof_ipv4
     | true -> Wire_structs.Ipv6_wire.sizeof_ipv6
@@ -99,6 +107,7 @@ let translate table direction frame =
       Wire_structs.set_ipv4_src packet (Ipaddr.V4.to_int32 src);
       Wire_structs.set_ipv4_dst packet (Ipaddr.V4.to_int32 dst)
       (* TODO: every other case *)
+    | _, _, _ -> ()
   in
   let rewrite_ports (txlayer : Cstruct.t) (newsrc, newdst) =
     Wire_structs.set_udp_source_port txlayer newsrc;
@@ -106,33 +115,33 @@ let translate table direction frame =
   in
   let ip_type = Wire_structs.get_ethernet_ethertype frame in
   let ip_packet = Cstruct.shift frame Wire_structs.sizeof_ethernet in
-  match ip_type with
-  | 0x0800 -> (* ipv4 *) (
+  let ips = retrieve_ips frame in
+  match (retrieve_ips frame) with
+  | Some (V4 src, V4 dst) -> (* ipv4 *) (
       let proto = Wire_structs.get_ipv4_proto ip_packet in
       match proto with
       | 6 | 17 -> 
         let higherproto_packet = Cstruct.shift frame (ip_size false) in
-        let src, dst = retrieve_ips false ip_packet in
         let sport, dport = retrieve_ports higherproto_packet in
         (* got everything; do the lookup *)
         let result = match direction with
-          | Source -> Lookup.lookup table proto src sport
-          | Destination -> Lookup.lookup table proto dst dport
+          | Source -> Lookup.lookup table proto (V4 src) sport
+          | Destination -> Lookup.lookup table proto (V4 dst) dport
         in
         match result, direction with
         (* TODO: just have rewrite_ips and rewrite_ports take a direction *)
         (* TODO: recalculate and rewrite tcp, ip checksums *)
         | Some (new_src, new_sport), Source ->
-          rewrite_ips false ip_packet (new_src, dst); 
+          rewrite_ips false ip_packet (new_src, (V4 dst)); 
           rewrite_ports higherproto_packet (new_sport, dport); 
           Some frame
         | Some (new_dst, new_dport), Destination ->
-          rewrite_ips false ip_packet (src, new_dst); 
+          rewrite_ips false ip_packet ((V4 src), new_dst); 
           rewrite_ports higherproto_packet (sport, new_dport); 
           Some frame
         | None, _ -> Some frame (* TODO: state tracking; inserts; check for broadcast,
                                    etc *)
     )
-  | 0x86dd -> None (* TODO, obviously *) (* ipv6 *)
+  | Some (V6 src, V6 dst) -> None (* TODO, obviously *) (* ipv6 *)
   | _ -> None (* don't forward arp or other types *)
 
