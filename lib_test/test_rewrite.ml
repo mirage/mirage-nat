@@ -28,6 +28,7 @@ let basic_ipv4_frame proto src dst smac_addr =
   Wire_structs.set_ipv4_src buf (Ipaddr.V4.to_int32 src); (* altered *)
   Wire_structs.set_ipv4_dst buf (Ipaddr.V4.to_int32 dst);
   let len = Wire_structs.sizeof_ethernet + Wire_structs.sizeof_ipv4 in
+  (* len is sizeof_ethernet + sizezof_ipv4 *)
   (ethernet_frame, len)
 
 let add_udp (frame, len) source_port dest_port =
@@ -57,9 +58,9 @@ let test_frame context =
   let (frame, len) = basic_ipv4_frame proto src dst smac_addr in
   let (frame, len) = add_udp (frame, len) 255 1024 in
   let table = 
-    Lookup.(insert (Hashtbl.create 2) 6 
+    Lookup.insert (Hashtbl.create 2) 17 
               (Ipaddr.of_string_exn "4.141.2.6", 1024) 
-                 (Ipaddr.of_string_exn "192.168.2.50", 6767))
+                 (Ipaddr.of_string_exn "192.168.2.50", 6767)
   in
   let translated_frame = Rewrite.translate table Destination frame in
   match translated_frame with
@@ -71,22 +72,20 @@ let test_frame context =
     let ipv4 = Cstruct.shift xl_frame (Wire_structs.sizeof_ethernet) in
     (* check src, dst, proto, ip checksum *)
     (* source should be the same, since we said the direction should be
-      Destination *)
+       Destination *)
     assert_equal (Ipaddr.V4.to_int32 src) (Wire_structs.get_ipv4_src ipv4);
     (* destination should have been changed to the lookup address *)
-    assert_equal (Ipaddr.V4.to_int32 (Ipaddr.V4.of_string_exn "192.168.2.50")) 
+    assert_equal ~printer:(fun a -> Ipaddr.V4.to_string (Ipaddr.V4.of_int32 a)) 
+      (Ipaddr.V4.to_int32 (Ipaddr.V4.of_string_exn "192.168.2.50")) 
       (Wire_structs.get_ipv4_dst ipv4);
     (* proto should be unaltered *)
-    assert_equal proto (Wire_structs.get_ipv4_proto ipv4);
-    (* checksum should be correct *)
-    assert_equal (Tcpip_checksum.ones_complement ipv4)
-      (Wire_structs.get_ipv4_csum ipv4);
-
-    (* ip id should be unaltered *)
-    (* TODO: how do we know? *)
+    assert_equal ~printer:string_of_int proto (Wire_structs.get_ipv4_proto ipv4);
+    (* checksum should be correct, meaning that one's complement of packet +
+      checksum = 0 *)
+    assert_equal ~printer:string_of_int (Tcpip_checksum.ones_complement ipv4) 0;
 
     let cstr_dst = Cstruct.of_string (Ipaddr.V4.to_bytes dst) in
-    (* optionally check to make sure options fragmentation etc haven't changed *)
+    (* TODO: check to make sure options fragmentation etc haven't changed *)
     let udp = Cstruct.shift xl_frame (Wire_structs.sizeof_ipv4) in
     () (* TODO: udp header checks *)
 
