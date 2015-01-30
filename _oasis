@@ -35,5 +35,5 @@ Executable test_rewrite
   ByteOpt: -g
   BuildDepends: oUnit, tcpip, quickcheck, mirage_nat, arbitrary
 
-Test test_lookup
+Test test_rewrite
   Command: $test_rewrite
