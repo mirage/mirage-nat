@@ -1,11 +1,10 @@
 open QuickCheck
+open QuickCheck_gen
 
   let arbitrary_port = 
-    let open QuickCheck_gen in
     arbitrary_int >>= fun p -> ret_gen (abs (p mod 65536))
 
   let arbitrary_ip = 
-    let open QuickCheck_gen in
     let byte_switch is_ipv6 bytes =
       match is_ipv6 with
       | true -> Ipaddr.V6 (Ipaddr.V6.of_bytes_exn bytes) (* Ipaddr.V6.t = 4x int32 *)
@@ -18,7 +17,6 @@ open QuickCheck
    * we'll choose randomly between 6 (tcp) and 17 (udp).  (next header in ipv6
     * is 8 bits, same for protocol in ipv4) *)
   let arbitrary_tcp_or_udp = 
-    let open QuickCheck_gen in
     arbitrary_bool >>= fun p -> ret_gen (if p then 6 else 17)
 
   let qc_printer = function
@@ -29,7 +27,5 @@ open QuickCheck
     tests" n
 
   let arbitrary_table_entry =
-    let open QuickCheck_gen in
-    let arbitrary_ip_port = arbitrary_pair arbitrary_ip arbitrary_port
-    in
+    let arbitrary_ip_port = arbitrary_pair arbitrary_ip arbitrary_port in
     arbitrary_triple arbitrary_tcp_or_udp arbitrary_ip_port arbitrary_ip_port
