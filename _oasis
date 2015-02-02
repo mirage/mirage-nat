@@ -11,14 +11,8 @@ Description: rewrite packets to support translation between external and interna
 
 Library mirage_nat
   Path: lib
-  Modules: Lookup, Rewrite
-  BuildDepends: ipaddr, tcpip, cstruct
-
-Library arbitrary
-  Path: lib
-  Modules: Arbitrary
-  FindlibParent: mirage_nat
-  BuildDepends: quickcheck, cstruct, ipaddr
+  Modules: Lookup, Rewrite, Arbitrary
+  BuildDepends: ipaddr, tcpip, cstruct, quickcheck
 
 Executable test_lookup
   Path: lib_test
@@ -33,7 +27,7 @@ Executable test_rewrite
   Path: lib_test
   MainIs: test_rewrite.ml
   ByteOpt: -g
-  BuildDepends: oUnit, tcpip, quickcheck, mirage_nat, arbitrary
+  BuildDepends: oUnit, tcpip, quickcheck, mirage_nat
 
 Test test_rewrite
   Command: $test_rewrite
