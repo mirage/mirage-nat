@@ -86,7 +86,7 @@ let retrieve_ips frame =
      Ipaddr.V6 (V6.of_cstruct_exn (Wire_structs.Ipv6_wire.get_ipv6_dst ip_packet)))
   | _ -> None
 
-let translate table direction frame =
+let translate table new_entry_ip direction frame =
   (* note that ethif.input doesn't have the same register-listeners-then-input
      format that tcp/udp do, so we could use it for the outer layer of parsing *)
   let ip_size is_ipv6 = match is_ipv6 with 
@@ -107,8 +107,8 @@ let translate table direction frame =
       Wire_structs.set_ipv4_src packet (Ipaddr.V4.to_int32 new_ip)
     | false, Destination, Ipaddr.V4 new_ip ->
       Wire_structs.set_ipv4_dst packet (Ipaddr.V4.to_int32 new_ip)
-      (* TODO: every other case *)
-    | _, _, _ -> raise (Failure "not implemented")
+    (* TODO: every other case *)
+    | _, _, _ -> raise (Failure "ipv4-ipv4 is the only implemented case")
   in
   let rewrite_port (txlayer : Cstruct.t) direction port =
     match direction with
@@ -117,8 +117,11 @@ let translate table direction frame =
   in
   (* TODO: this is not correct for IPv6, and may not even be correct for IPv4 *)
   let recalculate_checksum ip_layer =
-    let csum = Tcpip_checksum.ones_complement ip_layer in
-    Wire_structs.set_ipv4_csum ip_layer csum
+    (* set the checksum to 0 before recalculating *)
+    Wire_structs.set_ipv4_csum ip_layer 0;
+    let just_ipv4 = Cstruct.sub ip_layer 0 (Wire_structs.sizeof_ipv4) in
+    let new_csum = Tcpip_checksum.ones_complement just_ipv4 in
+    Wire_structs.set_ipv4_csum ip_layer new_csum
   in
   let ip_type = Wire_structs.get_ethernet_ethertype frame in
   let ip_packet = Cstruct.shift frame Wire_structs.sizeof_ethernet in
@@ -135,24 +138,30 @@ let translate table direction frame =
           | Source -> Lookup.lookup table proto (V4 src) sport
           | Destination -> Lookup.lookup table proto (V4 dst) dport
         in
-        match result, direction with
-        (* TODO: recalculate and rewrite tcp, ip checksums *)
-        | Some (V4 new_ip, new_port), _ ->
+        match result with
+        (* TODO: recalculate and rewrite tcp checksum *)
+        | Some (V4 new_ip, new_port) ->
           rewrite_ip false ip_packet direction (V4 new_ip);
           rewrite_port higherproto_packet direction new_port;
           (* recalculate the ip checksum *)
           recalculate_checksum ip_packet;
           Some frame
-        | None, Destination -> 
-          let str = Printf.sprintf "failed to find %d, %s, %d in table" proto
-              (Ipaddr.to_string (V4 dst)) dport in
-          raise (Failure str) (* Some frame *) 
-        | None, Source ->
-          let str = Printf.sprintf "failed to find %d, %s, %d in table" proto
-              (Ipaddr.to_string (V4 src)) sport in
-          raise (Failure str) (* Some frame *) 
-
+        | None -> (* add an entry *)
+          (* TODO: this is how you get race conditions *)
+          (* TODO: need to ensure ports are not already in use *)
+          let new_port = (Random.int 65535) in
+          let _t = match direction with 
+            | Destination -> Lookup.insert table proto ((V4 dst), dport)
+                             (new_entry_ip, new_port)
+            | Source -> Lookup.insert table proto ((V4 src), sport)
+                          (new_entry_ip, new_port)
+          in
+          rewrite_ip false ip_packet direction new_entry_ip;
+          rewrite_port higherproto_packet direction new_port;
+          (* recalculate the ip checksum *)
+          recalculate_checksum ip_packet;
+          Some frame
     )
-  | Some (V6 src, V6 dst) -> raise (Failure "not implemented") (* TODO, obviously *) (* ipv6 *)
+  | Some (V6 src, V6 dst) -> None (* TODO, obviously *) (* ipv6 *)
   | _ -> None (* don't forward arp or other types *)
 

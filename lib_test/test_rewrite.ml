@@ -62,7 +62,8 @@ let test_frame context =
               (Ipaddr.of_string_exn "4.141.2.6", 1024) 
                  (Ipaddr.of_string_exn "192.168.2.50", 6767)
   in
-  let translated_frame = Rewrite.translate table Destination frame in
+  let translated_frame = Rewrite.translate table (Ipaddr.of_string_exn
+                                                    "192.168.2.1") Destination frame in
   match translated_frame with
   | None -> assert_failure "Expected translateable frame wasn't rewritten"
   | Some xl_frame ->
@@ -81,8 +82,9 @@ let test_frame context =
     (* proto should be unaltered *)
     assert_equal ~printer:string_of_int proto (Wire_structs.get_ipv4_proto ipv4);
     (* checksum should be correct, meaning that one's complement of packet +
-      checksum = 0 *)
-    assert_equal ~printer:string_of_int (Tcpip_checksum.ones_complement ipv4) 0;
+       checksum = 0 *)
+    let just_ipv4 = Cstruct.sub ipv4 0 (Wire_structs.sizeof_ipv4) in
+    assert_equal ~printer:string_of_int (Tcpip_checksum.ones_complement just_ipv4) 0;
 
     let cstr_dst = Cstruct.of_string (Ipaddr.V4.to_bytes dst) in
     (* TODO: check to make sure options fragmentation etc haven't changed *)
