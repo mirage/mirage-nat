@@ -86,7 +86,10 @@ let test_frame context =
 
     let cstr_dst = Cstruct.of_string (Ipaddr.V4.to_bytes dst) in
     (* TODO: check to make sure options fragmentation etc haven't changed *)
-    let udp = Cstruct.shift xl_frame (Wire_structs.sizeof_ipv4) in
+    let udp = Cstruct.shift xl_frame (Wire_structs.sizeof_ethernet + 
+                                      Wire_structs.sizeof_ipv4) in
+    assert_equal ~printer:string_of_int 6767 (Wire_structs.get_udp_dest_port
+                                                udp);
     () (* TODO: udp header checks *)
 
 
