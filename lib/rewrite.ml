@@ -134,9 +134,7 @@ let translate table new_entry_ip direction frame =
         let higherproto_packet = Cstruct.shift ip_packet (ip_size false) in
         let sport, dport = retrieve_ports higherproto_packet in
         (* got everything; do the lookup *)
-        let result = match direction with
-          | Source -> Lookup.lookup table proto (V4 src) sport
-          | Destination -> Lookup.lookup table proto (V4 dst) dport
+        let result = Lookup.lookup table proto ((V4 src), sport) ((V4 dst), dport)
         in
         match result with
         (* TODO: recalculate and rewrite tcp checksum *)
@@ -146,20 +144,7 @@ let translate table new_entry_ip direction frame =
           (* recalculate the ip checksum *)
           recalculate_checksum ip_packet;
           Some frame
-        | None -> (* add an entry *)
-          (* TODO: this is how you get race conditions *)
-          (* TODO: need to ensure ports are not already in use *)
-          let new_port = (Random.int 65535) in
-          let _t = match direction with 
-            | Destination -> Lookup.insert table proto ((V4 dst), dport)
-                             (new_entry_ip, new_port)
-            | Source -> Lookup.insert table proto ((V4 src), sport)
-                          (new_entry_ip, new_port)
-          in
-          rewrite_ip false ip_packet direction new_entry_ip;
-          rewrite_port higherproto_packet direction new_port;
-          (* recalculate the ip checksum *)
-          recalculate_checksum ip_packet;
+        | None -> (* TODO: add an entry *)
           Some frame
     )
   | Some (V6 src, V6 dst) -> None (* TODO, obviously *) (* ipv6 *)

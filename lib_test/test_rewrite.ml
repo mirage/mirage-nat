@@ -52,15 +52,18 @@ let add_udp (frame, len) source_port dest_port =
 
 let test_frame context =
   let proto = 17 in
-  let src = (Ipaddr.V4.of_string_exn "128.104.108.1") in
+  let src = (Ipaddr.V4.of_string_exn "192.168.108.26") in
   let dst = (Ipaddr.V4.of_string_exn "4.141.2.6") in 
+  let xl = (Ipaddr.V4.of_string_exn "192.168.108.1") in
   let smac_addr = Macaddr.of_string_exn "00:16:3e:ff:00:ff" in
   let (frame, len) = basic_ipv4_frame proto src dst smac_addr in
   let (frame, len) = add_udp (frame, len) 255 1024 in
   let table = 
-    Lookup.insert (Hashtbl.create 2) 17 
-              (Ipaddr.of_string_exn "4.141.2.6", 1024) 
-                 (Ipaddr.of_string_exn "192.168.2.50", 6767)
+    match Lookup.insert (Hashtbl.create 2) 17 
+            ((V4 src), 1024) ((V4 dst), 6767) ((V4 xl), 45454)
+    with
+    | Some t -> t
+    | None -> assert_failure "Failed to insert test data into table structure"
   in
   let translated_frame = Rewrite.translate table (Ipaddr.of_string_exn
                                                     "192.168.2.1") Destination frame in
