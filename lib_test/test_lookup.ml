@@ -12,6 +12,13 @@ let translate_v6 = ((Ipaddr.of_string_exn
 
 let (empty_table : Lookup.table) = empty ()
 
+let show_table_entry (proto, left, right, translate) = Printf.sprintf
+    "for source rewrites, protocol %d: (%s, %d), (%s, %d) -> (%s, %d), (%s, %d)" proto 
+    (Ipaddr.to_string (fst left)) (snd left)
+    (Ipaddr.to_string (fst right)) (snd right)
+    (Ipaddr.to_string (fst translate)) (snd translate)
+    (Ipaddr.to_string (fst right)) (snd right)
+
 let default_table () =
   let t = Hashtbl.create 20 in
   (* TODO: don't just assume success *)
@@ -26,9 +33,9 @@ let basic_lookup context =
   assert_equal 
     (lookup t 6 exterior_v4 translate_v4) (Some interior_v4);
   assert_equal 
-    (lookup t 6 interior_v6 exterior_v6) (Some translate_v6);
+    (lookup t 17 interior_v6 exterior_v6) (Some translate_v6);
   assert_equal 
-    (lookup t 6 exterior_v6 translate_v6) (Some interior_v6);
+    (lookup t 17 exterior_v6 translate_v6) (Some interior_v6);
   assert_equal 
     (lookup t 4 interior_v4 exterior_v4) None;
   assert_equal 
@@ -76,13 +83,6 @@ let crud context =
   let arbitrary_table_entry_list =
     QC.arbitrary_list Arbitrary.arbitrary_table_entry
   in
-  let show_table_entry (proto, left, right, translate) = Printf.sprintf
-      "for source rewrites, protocol %d: (%s, %d), (%s, %d) -> (%s, %d), (%s, %d)" proto 
-      (Ipaddr.to_string (fst left)) (snd left)
-      (Ipaddr.to_string (fst right)) (snd right)
-      (Ipaddr.to_string (fst translate)) (snd translate)
-      (Ipaddr.to_string (fst right)) (snd right)
-  in
   let testable_entries_to_boolean = QC.quickCheck (QC.testable_fun
                                           arbitrary_table_entry_list
                                           (QC.show_list show_table_entry)
@@ -92,7 +92,21 @@ let crud context =
   assert_equal ~printer:Arbitrary.qc_printer QC.Success result
 
 let uniqueness context =
-  assert_failure "not implemented"
+  let t = default_table () in
+  let try_bad_insert proto pair1 pair2 pair3 =
+  match insert t proto pair1 pair2 pair3 with
+  | Some t -> assert_failure (Printf.sprintf "Insertion succeeded for duplicate
+                                table entry %s" (show_table_entry (proto, pair1,
+                                                                   pair2,
+                                                                   pair3)))
+  | None -> ()
+  in
+  (* two sources mapped to same dst/xl can't be disambiguated, so these should
+     produce None *)
+  try_bad_insert 6 ((Ipaddr.of_string_exn "192.168.3.29"), 12021) exterior_v4
+    translate_v4; 
+  try_bad_insert 17 ((Ipaddr.of_string_exn "10.1.2.4"), 6667) exterior_v6
+    translate_v6
 
 let suite = "test-lookup" >::: 
   [

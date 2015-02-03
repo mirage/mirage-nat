@@ -54,19 +54,19 @@ let test_frame context =
   let proto = 17 in
   let src = (Ipaddr.V4.of_string_exn "192.168.108.26") in
   let dst = (Ipaddr.V4.of_string_exn "4.141.2.6") in 
-  let xl = (Ipaddr.V4.of_string_exn "192.168.108.1") in
+  let xl = (Ipaddr.V4.of_string_exn "128.104.108.1") in
   let smac_addr = Macaddr.of_string_exn "00:16:3e:ff:00:ff" in
   let (frame, len) = basic_ipv4_frame proto src dst smac_addr in
   let (frame, len) = add_udp (frame, len) 255 1024 in
   let table = 
     match Lookup.insert (Hashtbl.create 2) 17 
-            ((V4 src), 1024) ((V4 dst), 6767) ((V4 xl), 45454)
+            ((V4 src), 255) ((V4 dst), 1024) ((V4 xl), 45454)
     with
     | Some t -> t
     | None -> assert_failure "Failed to insert test data into table structure"
   in
   let translated_frame = Rewrite.translate table (Ipaddr.of_string_exn
-                                                    "192.168.2.1") Destination frame in
+                                                    "128.104.108.1") Destination frame in
   match translated_frame with
   | None -> assert_failure "Expected translateable frame wasn't rewritten"
   | Some xl_frame ->
@@ -80,7 +80,7 @@ let test_frame context =
     assert_equal (Ipaddr.V4.to_int32 src) (Wire_structs.get_ipv4_src ipv4);
     (* destination should have been changed to the lookup address *)
     assert_equal ~printer:(fun a -> Ipaddr.V4.to_string (Ipaddr.V4.of_int32 a)) 
-      (Ipaddr.V4.to_int32 (Ipaddr.V4.of_string_exn "192.168.2.50")) 
+      (Ipaddr.V4.to_int32 (xl)) 
       (Wire_structs.get_ipv4_dst ipv4);
     (* proto should be unaltered *)
     assert_equal ~printer:string_of_int proto (Wire_structs.get_ipv4_proto ipv4);
@@ -93,7 +93,7 @@ let test_frame context =
     (* TODO: check to make sure options fragmentation etc haven't changed *)
     let udp = Cstruct.shift xl_frame (Wire_structs.sizeof_ethernet + 
                                       Wire_structs.sizeof_ipv4) in
-    assert_equal ~printer:string_of_int 6767 (Wire_structs.get_udp_dest_port
+    assert_equal ~printer:string_of_int 45454 (Wire_structs.get_udp_dest_port
                                                 udp);
     () (* TODO: udp header checks *)
 
