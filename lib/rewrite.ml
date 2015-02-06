@@ -139,13 +139,13 @@ let translate table new_entry_ip direction frame =
         match result with
         (* TODO: recalculate and rewrite tcp checksum *)
         | Some (V4 new_ip, new_port) ->
+          (* TODO: we should probably check TTL and (1) refuse to pass TTL = 0;
+          (2) decrement TTL > 0 *)
           rewrite_ip false ip_packet direction (V4 new_ip);
           rewrite_port higherproto_packet direction new_port;
-          (* recalculate the ip checksum *)
           recalculate_checksum ip_packet;
           Some frame
-        | None -> (* TODO: add an entry *)
-          Some frame
+        | None -> (* TODO: add an entry *) None
     )
   | Some (V6 src, V6 dst) -> None (* TODO, obviously *) (* ipv6 *)
   | _ -> None (* don't forward arp or other types *)
