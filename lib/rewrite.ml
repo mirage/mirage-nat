@@ -70,6 +70,17 @@ end
 
 type direction = Source | Destination
 
+(* reproduced from ipv4.checksum *)
+let checksum =
+  let pbuf = Cstruct.create 4 in
+  Cstruct.set_uint8 pbuf 0 0;
+  fun frame bufs ->
+    let frame = Cstruct.shift frame Wire_structs.sizeof_ethernet in
+    Cstruct.set_uint8 pbuf 1 (Wire_structs.get_ipv4_proto frame);
+    Cstruct.BE.set_uint16 pbuf 2 (Cstruct.lenv bufs);
+    let src_dst = Cstruct.sub frame 12 (2 * 4) in
+    Tcpip_checksum.ones_complement_list (src_dst :: pbuf :: bufs)
+
 (* TODO: it's not clear where this function should be, but it probably shouldn't
    be here in the long run. *)
 let retrieve_ips frame = 
@@ -115,17 +126,31 @@ let translate table new_entry_ip direction frame =
     | Source -> Wire_structs.set_udp_source_port txlayer port
     | Destination -> Wire_structs.set_udp_dest_port txlayer port
   in
-  (* TODO: this is not correct for IPv6, and may not even be correct for IPv4 *)
-  let recalculate_checksum ip_layer =
+  let decrement_ttl ip_layer =
+    Wire_structs.set_ipv4_ttl ip_layer 
+      ((Wire_structs.get_ipv4_ttl ip_layer) - 1)
+  in
+  (* TODO: this is not correct for IPv6 *)
+  let recalculate_ip_checksum ip_layer =
     (* set the checksum to 0 before recalculating *)
     Wire_structs.set_ipv4_csum ip_layer 0;
     let just_ipv4 = Cstruct.sub ip_layer 0 (Wire_structs.sizeof_ipv4) in
     let new_csum = Tcpip_checksum.ones_complement just_ipv4 in
     Wire_structs.set_ipv4_csum ip_layer new_csum
   in
+  let recalculate_udp_checksum ip_layer =
+    (* set the checksum to 0 before recalculating *)
+    let udp_only = Cstruct.shift ip_layer (Wire_structs.sizeof_ipv4) in
+    Wire_structs.set_udp_checksum udp_only 0;
+    let cs = checksum ip_layer 
+        (Cstruct.sub ip_layer 0 (Wire_structs.sizeof_ipv4)
+         :: udp_only 
+         :: [])
+    in
+    Wire_structs.set_udp_checksum udp_only cs
+  in
   let ip_type = Wire_structs.get_ethernet_ethertype frame in
   let ip_packet = Cstruct.shift frame Wire_structs.sizeof_ethernet in
-  let ips = retrieve_ips frame in
   match (retrieve_ips frame) with
   | Some (V4 src, V4 dst) -> (* ipv4 *) (
       let proto = Wire_structs.get_ipv4_proto ip_packet in
@@ -139,11 +164,12 @@ let translate table new_entry_ip direction frame =
         match result with
         (* TODO: recalculate and rewrite tcp checksum *)
         | Some (V4 new_ip, new_port) ->
-          (* TODO: we should probably check TTL and (1) refuse to pass TTL = 0;
-          (2) decrement TTL > 0 *)
+          (* TODO: we should probably refuse to pass TTL = 0 and instead send an
+             ICMP message back to the sender *)
           rewrite_ip false ip_packet direction (V4 new_ip);
           rewrite_port higherproto_packet direction new_port;
-          recalculate_checksum ip_packet;
+          decrement_ttl ip_packet;
+          recalculate_ip_checksum ip_packet;
           Some frame
         | None -> (* TODO: add an entry *) None
     )
