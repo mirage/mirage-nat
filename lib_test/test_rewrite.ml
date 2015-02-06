@@ -156,19 +156,6 @@ let test_udp_ipv4 context =
                                                 Wire_structs.sizeof_udp) in
     assert_equal ~printer:Cstruct.to_string xl_payload original_payload;
 
-    (* UDP checksum should be correct, meaning one's complement of IP
-       pseudoheader + UDP header + UDP payload  == 0xffff *)
-    (* luckily, there's already a pseudoheader cstruct in Wire_structs *)
-    (* let just_ipv4 = Cstruct.sub xl_frame (Wire_structs.sizeof_ethernet) (Wire_structs.sizeof_ipv4) in
-    let buf = Cstruct.create Wire_structs.Tcp_wire.sizeof_tcpv4_pseudo_header in
-    zero_cstruct buf;
-    Wire_structs.Tcp_wire.set_tcpv4_pseudo_header_src buf (Ipaddr.V4.to_int32 src);
-    Wire_structs.Tcp_wire.set_tcpv4_pseudo_header_dst buf (Ipaddr.V4.to_int32 xl);
-    Wire_structs.Tcp_wire.set_tcpv4_pseudo_header_proto buf
-      (Wire_structs.get_ipv4_proto just_ipv4);
-    Wire_structs.Tcp_wire.set_tcpv4_pseudo_header_len buf (Wire_structs.get_ipv4_len
-                                                    just_ipv4);
-     let cs = Tcpip_checksum.ones_complement_list (buf :: udp :: []) in *)
     let cs = 0 in
     assert_equal ~printer:string_of_int cs (Wire_structs.get_udp_checksum udp)
 
