@@ -50,7 +50,29 @@ let add_udp (frame, len) source_port dest_port =
 
 (* TODO: add_tcp, tests for tcp packets. *)
 
-let test_frame context =
+let test_ipv4_rewriting exp_src exp_dst exp_proto xl_frame =
+  (* should still be an ipv4 frame *)
+  assert_equal 0x0800 (Wire_structs.get_ethernet_ethertype xl_frame);
+  let ipv4 = Cstruct.shift xl_frame (Wire_structs.sizeof_ethernet) in
+
+  (* source IP should be the same, since we said the direction should be
+     Destination *)
+  assert_equal (Ipaddr.V4.to_int32 exp_src) (Wire_structs.get_ipv4_src ipv4);
+
+  (* destination IP should have been changed to the lookup address *)
+  assert_equal ~printer:(fun a -> Ipaddr.V4.to_string (Ipaddr.V4.of_int32 a)) 
+    (Ipaddr.V4.to_int32 (exp_dst)) 
+    (Wire_structs.get_ipv4_dst ipv4);
+
+  (* proto should be unaltered *)
+  assert_equal ~printer:string_of_int exp_proto (Wire_structs.get_ipv4_proto ipv4);
+
+  (* IPv4 checksum should be correct, meaning that one's complement of packet +
+     checksum = 0 *)
+  let just_ipv4 = Cstruct.sub ipv4 0 (Wire_structs.sizeof_ipv4) in
+  assert_equal ~printer:string_of_int (Tcpip_checksum.ones_complement just_ipv4) 0
+
+let test_udp_ipv4_frame context =
   let proto = 17 in
   let src = (Ipaddr.V4.of_string_exn "192.168.108.26") in
   let dst = (Ipaddr.V4.of_string_exn "4.141.2.6") in 
@@ -70,38 +92,42 @@ let test_frame context =
   match translated_frame with
   | None -> assert_failure "Expected translateable frame wasn't rewritten"
   | Some xl_frame ->
-    (* check to see whether translation happened as expected *)
-    (* should still be an ipv4 frame *)
-    assert_equal 0x0800 (Wire_structs.get_ethernet_ethertype xl_frame);
-    let ipv4 = Cstruct.shift xl_frame (Wire_structs.sizeof_ethernet) in
-    (* check src, dst, proto, ip checksum *)
-    (* source should be the same, since we said the direction should be
-       Destination *)
-    assert_equal (Ipaddr.V4.to_int32 src) (Wire_structs.get_ipv4_src ipv4);
-    (* destination should have been changed to the lookup address *)
-    assert_equal ~printer:(fun a -> Ipaddr.V4.to_string (Ipaddr.V4.of_int32 a)) 
-      (Ipaddr.V4.to_int32 (xl)) 
-      (Wire_structs.get_ipv4_dst ipv4);
-    (* proto should be unaltered *)
-    assert_equal ~printer:string_of_int proto (Wire_structs.get_ipv4_proto ipv4);
-    (* checksum should be correct, meaning that one's complement of packet +
-       checksum = 0 *)
-    let just_ipv4 = Cstruct.sub ipv4 0 (Wire_structs.sizeof_ipv4) in
-    assert_equal ~printer:string_of_int (Tcpip_checksum.ones_complement just_ipv4) 0;
+    (* check to see whether ipv4-level translation happened as expected *)
+    test_ipv4_rewriting src xl proto xl_frame;
 
-    let cstr_dst = Cstruct.of_string (Ipaddr.V4.to_bytes dst) in
-    (* TODO: check to make sure options fragmentation etc haven't changed *)
+    (* UDP destination port should have changed *)
     let udp = Cstruct.shift xl_frame (Wire_structs.sizeof_ethernet + 
                                       Wire_structs.sizeof_ipv4) in
     assert_equal ~printer:string_of_int 45454 (Wire_structs.get_udp_dest_port
-                                                udp);
-    () (* TODO: udp header checks *)
+                                                 udp);
 
+    (* payload should be unaltered *)
+    let xl_payload = Cstruct.shift udp (Wire_structs.sizeof_udp) in
+    let original_payload = Cstruct.shift frame (Wire_structs.sizeof_ethernet +
+                                                Wire_structs.sizeof_ipv4 +
+                                                Wire_structs.sizeof_udp) in
+    assert_equal ~printer:Cstruct.to_string xl_payload original_payload;
+
+    (* UDP checksum should be correct, meaning one's complement of IP
+       pseudoheader + UDP header + UDP payload  == 0xffff *)
+    (* luckily, there's already a pseudoheader cstruct in Wire_structs *)
+    let just_ipv4 = Cstruct.sub frame (Wire_structs.sizeof_ethernet) (Wire_structs.sizeof_ipv4) in
+    let buf = Cstruct.create Wire_structs.Tcp_wire.sizeof_tcpv4_pseudo_header in
+    zero_cstruct buf;
+    Wire_structs.Tcp_wire.set_tcpv4_pseudo_header_src buf (Ipaddr.V4.to_int32 src);
+    Wire_structs.Tcp_wire.set_tcpv4_pseudo_header_dst buf (Ipaddr.V4.to_int32 xl);
+    Wire_structs.Tcp_wire.set_tcpv4_pseudo_header_proto buf
+      (Wire_structs.get_ipv4_proto just_ipv4);
+    Wire_structs.Tcp_wire.set_tcpv4_pseudo_header_len buf (Wire_structs.get_udp_length
+                                                    udp);
+    let cs = Tcpip_checksum.ones_complement_list (buf :: just_ipv4 :: udp :: []) in
+    assert_equal ~printer:string_of_int 0xffff cs;
+    ()
 
 let suite = "test-rewrite" >:::
             [
-              "basic frame rewriting works" >:: test_frame
-  ]
+              "UDP IPv4 rewriting works" >:: test_udp_ipv4_frame
+            ]
 
 let () = 
   run_test_tt_main suite
