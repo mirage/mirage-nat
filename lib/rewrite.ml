@@ -97,7 +97,7 @@ let retrieve_ips frame =
      Ipaddr.V6 (V6.of_cstruct_exn (Wire_structs.Ipv6_wire.get_ipv6_dst ip_packet)))
   | _ -> None
 
-let translate table new_entry_ip direction frame =
+let translate table direction frame =
   (* note that ethif.input doesn't have the same register-listeners-then-input
      format that tcp/udp do, so we could use it for the outer layer of parsing *)
   let ip_size is_ipv6 = match is_ipv6 with 
@@ -138,16 +138,26 @@ let translate table new_entry_ip direction frame =
     let new_csum = Tcpip_checksum.ones_complement just_ipv4 in
     Wire_structs.set_ipv4_csum ip_layer new_csum
   in
-  let recalculate_udp_checksum ip_layer =
+  let recalculate_udp_checksum frame udp_layer =
     (* set the checksum to 0 before recalculating *)
-    let udp_only = Cstruct.shift ip_layer (Wire_structs.sizeof_ipv4) in
-    Wire_structs.set_udp_checksum udp_only 0;
-    let cs = checksum ip_layer 
-        (Cstruct.sub ip_layer 0 (Wire_structs.sizeof_ipv4)
-         :: udp_only 
-         :: [])
+    (* TODO I'm pretty sure I see the problem --  we should call with ethernet
+      level frame and then a list consisting of udp_header :: payload *)
+    Wire_structs.set_udp_checksum udp_layer 0;
+    let cs = checksum frame
+        (udp_layer ::
+         (Cstruct.shift udp_layer (Wire_structs.sizeof_udp)) :: [] )
     in
-    Wire_structs.set_udp_checksum udp_only cs
+    Wire_structs.set_udp_checksum udp_layer cs
+  in
+  let recalculate_tcp_checksum frame tcp_layer =
+    (* set checksum to 0 *)
+    (* TODO: these shifts don't work if options are set *)
+    Wire_structs.Tcp_wire.set_tcp_checksum tcp_layer 0;
+    let cs = checksum frame (tcp_layer :: (Cstruct.shift tcp_layer
+                                             Wire_structs.Tcp_wire.sizeof_tcp)
+                             :: [])
+    in
+    Wire_structs.Tcp_wire.set_tcp_checksum tcp_layer cs
   in
   let ip_type = Wire_structs.get_ethernet_ethertype frame in
   let ip_packet = Cstruct.shift frame Wire_structs.sizeof_ethernet in
@@ -162,7 +172,6 @@ let translate table new_entry_ip direction frame =
         let result = Lookup.lookup table proto ((V4 src), sport) ((V4 dst), dport)
         in
         match result with
-        (* TODO: recalculate and rewrite tcp checksum *)
         | Some (V4 new_ip, new_port) ->
           (* TODO: we should probably refuse to pass TTL = 0 and instead send an
              ICMP message back to the sender *)
@@ -170,6 +179,13 @@ let translate table new_entry_ip direction frame =
           rewrite_port higherproto_packet direction new_port;
           decrement_ttl ip_packet;
           recalculate_ip_checksum ip_packet;
+          (* TODO: write a general recalculate_proto_checksum *)
+          (match proto with 
+          | 6 ->
+            recalculate_tcp_checksum frame higherproto_packet
+          | 17 ->
+            recalculate_udp_checksum frame higherproto_packet
+          );
           Some frame
         | None -> (* TODO: add an entry *) None
     )
