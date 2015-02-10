@@ -1,7 +1,11 @@
 (* TODO: what are the actual data types on these?  no explicit
 types in tcpip/lib/ipv4.ml, just matches on the number
 straight from the struct, so we'll do that too although we
-should instead restrict to tcp or udp *) 
+   should instead restrict to tcp or udp *) 
+
+(* TODO: types should actually be more complex and allow for entries mapping
+  networks and port ranges (with internal logic disallowing many:many mappings)
+*)
 type protocol = int
 type port = int (* TODO: should probably formalize that this is uint16 *)
 type table = (protocol * (Ipaddr.t * port) * (Ipaddr.t * port), (Ipaddr.t * port)) Hashtbl.t
