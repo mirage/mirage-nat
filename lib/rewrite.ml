@@ -165,7 +165,7 @@ let translate table direction frame =
   | Some (V4 src, V4 dst) -> (* ipv4 *) (
       let proto = Wire_structs.get_ipv4_proto ip_packet in
       match proto with
-      | 6 | 17 -> 
+      | 6 | 17 -> (
         let higherproto_packet = Cstruct.shift ip_packet (ip_size false) in
         let sport, dport = retrieve_ports higherproto_packet in
         (* got everything; do the lookup *)
@@ -178,16 +178,10 @@ let translate table direction frame =
           rewrite_ip false ip_packet direction (V4 new_ip);
           rewrite_port higherproto_packet direction new_port;
           decrement_ttl ip_packet;
-          recalculate_ip_checksum ip_packet;
-          (* TODO: write a general recalculate_proto_checksum *)
-          (match proto with 
-          | 6 ->
-            recalculate_tcp_checksum frame higherproto_packet
-          | 17 ->
-            recalculate_udp_checksum frame higherproto_packet
-          );
           Some frame
         | None -> (* TODO: add an entry *) None
+        )
+      | _ -> None (* TODO: don't just drop all non-udp, non-tcp packets *)
     )
   | Some (V6 src, V6 dst) -> None (* TODO, obviously *) (* ipv6 *)
   | _ -> None (* don't forward arp or other types *)
