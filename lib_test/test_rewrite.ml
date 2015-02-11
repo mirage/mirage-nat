@@ -13,7 +13,8 @@ let basic_ipv4_frame proto src dst ttl smac_addr =
      could call allocate_frame with a Macaddr.t directly *)
   (* need to make sure this is zeroed, which we get for free w/io_page but not
      cstruct *)
-  let ethernet_frame = zero_cstruct (Cstruct.create 1024) in (* altered *)
+  let ethernet_frame = zero_cstruct (Cstruct.create (Cstruct.sizeof_ethernet +
+                                                     Cstruct.sizeof_ipv4)) in (* altered *)
   let smac = Macaddr.to_bytes smac_addr in (* altered *)
   Wire_structs.set_ethernet_src smac 0 ethernet_frame;
   Wire_structs.set_ethernet_ethertype ethernet_frame 0x0800;
@@ -61,10 +62,6 @@ let add_tcp (frame, len) source_port dest_port =
 
 let add_udp (frame, len) source_port dest_port =
   (* also cribbed from mirage-tcpip *)
-  (* we can do this resizing because we know that we originally requested a much
-  larger buffer, but quite honestly this seems like a potentially extremely
-    unsafe operation; TODO check in cstructs to see why this doesn't horribly
-    explode more often *)
   let frame = Cstruct.set_len frame (len + Wire_structs.sizeof_udp) in
   let udp_buf = Cstruct.shift frame len in
   Wire_structs.set_udp_source_port udp_buf source_port;
@@ -247,9 +244,36 @@ let test_make_entry_valid_pkt context =
     | Ok t -> assert_failure "make_entry allowed a duplicate entry"
 
 let test_make_entry_nonsense context =
-  (* sorts of bad packets: broadcast packets, unparseable packets,
+  (* sorts of bad packets: broadcast packets,
      non-tcp/udp/icmp packets *)
-  ()
+  let proto = 17 in
+  let src = Ipaddr.V4.of_string_exn "172.16.2.30" in
+  let dst = Ipaddr.V4.of_string_exn "1.2.3.4" in
+  let xl_ip = Ipaddr.V4.of_string_exn "172.16.0.1" in
+  let xl_port = 10201 in
+  let smac_addr = Macaddr.of_string_exn "00:16:3e:65:65:65" in
+  let mangled_looking, _ = basic_ipv4_frame proto src dst 60 smac_addr in
+  match (Rewrite.make_entry (Lookup.empty ()) mangled_looking
+           (Ipaddr.V4 xl_ip) xl_port) with
+  | Ok _ | Overlap -> assert_failure "make_entry happily took a mangled packet"
+  | Unparseable -> 
+    let broadcast_dst = Ipaddr.V4.of_string_exn "255.255.255.0" in
+    let sport = 45454 in
+    let dport = 80 in
+    let broadcast, _ = add_tcp (basic_ipv4_frame 6 src dst 30 smac_addr)
+        sport dport in
+    match (Rewrite.make_entry (Lookup.empty ()) broadcast (Ipaddr.V4 xl_ip)
+             xl_port) with
+    | Ok _ | Overlap -> assert_failure "make_entry happily took a mangled
+    packet"
+    | Unparseable -> 
+      (* try just an ethernet frame *)
+      let e = zero_cstruct (Cstruct.create Wire_structs.sizeof_ethernet) in
+      match (Rewrite.make_entry (Lookup.empty ()) e (Ipaddr.V4 xl_ip) xl_port)
+      with
+      | Ok _ | Overlap -> assert_failure "make_entry claims to have succeeded
+      with a bare ethernet frame"
+      | Unparseable -> ()
 
 let test_tcp_ipv6 context =
   assert_failure "Test not implemented :("
