@@ -69,6 +69,10 @@ module V6 = struct
 end
 
 type direction = Source | Destination
+type insert_result = 
+  | Ok of Lookup.table
+  | Overlap
+  | Unparseable
 
 (* reproduced from ipv4.checksum *)
 let checksum =
@@ -186,3 +190,5 @@ let translate table direction frame =
   | Some (V6 src, V6 dst) -> None (* TODO, obviously *) (* ipv6 *)
   | _ -> None (* don't forward arp or other types *)
 
+let make_entry table frame xl_ip xl_port =
+  Ok table

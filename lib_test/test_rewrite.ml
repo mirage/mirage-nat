@@ -201,6 +201,56 @@ let test_udp_ipv6 context =
   | None -> assert_failure "Couldn't translate an IPv6 UDP frame"
   | Some xl_frame -> assert_failure "Test not implemented :("
 
+let test_make_entry_valid_pkt context =
+  let proto = 17 in
+  let src = Ipaddr.V4.of_string_exn "172.16.2.30" in
+  let dst = Ipaddr.V4.of_string_exn "1.2.3.4" in
+  let sport = 18787 in
+  let dport = 80 in
+  let xl_ip = Ipaddr.V4.of_string_exn "172.16.0.1" in
+  let xl_port = 10201 in
+  let smac_addr = Macaddr.of_string_exn "00:16:3e:65:65:65" in
+  let (frame, len) = basic_ipv4_frame proto src dst 52 smac_addr in
+  let (frame, len) = add_udp (frame, len) sport dport in
+  let table = Lookup.empty () in
+  match Rewrite.make_entry table frame (Ipaddr.V4 xl_ip) xl_port with
+  | Overlap -> assert_failure "make_entry claimed overlap when inserting into an
+                 empty table"
+  | Unparseable -> 
+    Printf.printf "Allegedly unparseable frame follows:\n";
+    Cstruct.hexdump frame;
+    assert_failure "make_entry claimed that a reference packet was unparseable"
+  | Ok t ->
+    (* make sure table actually has the entries we expect *)
+    let check_entries src_lookup dst_lookup = 
+      (* TODO: rewrite this; assert_equal and a printer function would be
+        clearer *)
+      match src_lookup, dst_lookup with
+      | Some (xl_ip, xl_port), Some (src, sport) -> () (* yay! *)
+      | Some (q_ip, q_port), Some (r_ip, r_port) -> 
+        let err = Printf.sprintf "Bad entry from make_entry: %s, %d; %s, %d\n" 
+            (Ipaddr.to_string q_ip) q_port (Ipaddr.to_string r_ip) r_port in
+        assert_failure err
+      | None, _ | _, None -> assert_failure 
+        "make_entry claimed success, but was missing expected entries entirely"
+    in
+    let src_lookup = Lookup.lookup t proto (V4 src, sport) (V4 dst, dport) in
+    let dst_lookup = Lookup.lookup t proto (V4 xl_ip, xl_port) (V4 dst, dport) in
+    check_entries src_lookup dst_lookup;
+    (* trying the same operation again should give us an Overlap failure *)
+    match Rewrite.make_entry table frame (Ipaddr.V4 xl_ip) xl_port with
+    | Overlap -> ()
+    | Unparseable -> 
+      Printf.printf "Allegedly unparseable frame follows:\n";
+      Cstruct.hexdump frame;
+      assert_failure "make_entry claimed that a reference packet was unparseable"
+    | Ok t -> assert_failure "make_entry allowed a duplicate entry"
+
+let test_make_entry_nonsense context =
+  (* sorts of bad packets: broadcast packets, unparseable packets,
+     non-tcp/udp/icmp packets *)
+  ()
+
 let test_tcp_ipv6 context =
   assert_failure "Test not implemented :("
 
@@ -209,7 +259,9 @@ let suite = "test-rewrite" >:::
               "UDP IPv4 rewriting works" >:: test_udp_ipv4;
               "TCP IPv4 rewriting works" >:: test_tcp_ipv4 (* ;
               "UDP IPv6 rewriting works" >:: test_udp_ipv6;
-              "TCP IPv6 rewriting works" >:: test_tcp_ipv6 *)
+                                                              "TCP IPv6 rewriting works" >:: test_tcp_ipv6 *) ;
+              "make_entry makes entries" >:: test_make_entry_valid_pkt;
+              "make_entry refuses nonsense frames" >:: test_make_entry_nonsense
             ]
 
 let () = 
