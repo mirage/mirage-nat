@@ -101,17 +101,18 @@ let retrieve_ips frame =
      Ipaddr.V6 (V6.of_cstruct_exn (Wire_structs.Ipv6_wire.get_ipv6_dst ip_packet)))
   | _ -> None
 
+let retrieve_ports tx_layer = 
+  (* Cstruct.uint16, Cstruct.uint16 *)
+  if (Cstruct.len tx_layer < (Wire_structs.sizeof_udp)) then None else Some
+  ((Wire_structs.get_udp_source_port tx_layer : int), 
+   (Wire_structs.get_udp_dest_port tx_layer : int))
+
 let translate table direction frame =
   (* note that ethif.input doesn't have the same register-listeners-then-input
      format that tcp/udp do, so we could use it for the outer layer of parsing *)
   let ip_size is_ipv6 = match is_ipv6 with 
     | false -> Wire_structs.sizeof_ipv4
     | true -> Wire_structs.Ipv6_wire.sizeof_ipv6
-  in
-  let retrieve_ports packet = 
-    (* Cstruct.uint16, Cstruct.uint16 *)
-    ((Wire_structs.get_udp_source_port packet : int), 
-     (Wire_structs.get_udp_dest_port packet : int))
   in
   (* TODO: this is not the right set of parameters for a function that might
      have to do 6-to-4 translation *)
@@ -170,20 +171,24 @@ let translate table direction frame =
       let proto = Wire_structs.get_ipv4_proto ip_packet in
       match proto with
       | 6 | 17 -> (
-        let higherproto_packet = Cstruct.shift ip_packet (ip_size false) in
-        let sport, dport = retrieve_ports higherproto_packet in
-        (* got everything; do the lookup *)
-        let result = Lookup.lookup table proto ((V4 src), sport) ((V4 dst), dport)
-        in
-        match result with
-        | Some (V4 new_ip, new_port) ->
-          (* TODO: we should probably refuse to pass TTL = 0 and instead send an
-             ICMP message back to the sender *)
-          rewrite_ip false ip_packet direction (V4 new_ip);
-          rewrite_port higherproto_packet direction new_port;
-          decrement_ttl ip_packet;
-          Some frame
-        | None -> (* TODO: add an entry *) None
+          let higherproto_packet = Cstruct.shift ip_packet (ip_size false) in
+          match retrieve_ports higherproto_packet with
+          | Some (sport, dport) -> (
+            (* got everything; do the lookup *)
+            let result = Lookup.lookup table proto ((V4 src), sport) ((V4 dst), dport)
+            in
+            match result with 
+              | Some (V4 new_ip, new_port) ->
+                (* TODO: we should probably refuse to pass TTL = 0 and instead send an
+                   ICMP message back to the sender *)
+                rewrite_ip false ip_packet direction (V4 new_ip);
+                rewrite_port higherproto_packet direction new_port;
+                decrement_ttl ip_packet;
+                Some frame 
+              | Some (V6 new_ip, new_port) -> None (* TODO: 4-to-6 logic *)
+              | None -> None (* don't autocreate new entries *)
+            )
+          | None -> None (* udp/tcp but couldn't get ports; drop it *)
         )
       | _ -> None (* TODO: don't just drop all non-udp, non-tcp packets *)
     )
@@ -191,4 +196,31 @@ let translate table direction frame =
   | _ -> None (* don't forward arp or other types *)
 
 let make_entry table frame xl_ip xl_port =
-  Ok table
+  (* basic sanity check; nothing smaller than this will be nat-able *)
+  if (Cstruct.len frame) < (Wire_structs.sizeof_ethernet +
+                          Wire_structs.sizeof_ipv4 + Wire_structs.sizeof_udp) 
+  then 
+    Unparseable
+  else 
+    let ip_layer = Cstruct.shift frame (Wire_structs.sizeof_ethernet) in
+    let tx_layer = Cstruct.shift ip_layer (Wire_structs.sizeof_ipv4) in
+    let proto = Wire_structs.get_ipv4_proto ip_layer in
+    let check_scope ip =
+      match Ipaddr.scope ip with
+      | Global | Organization -> true
+      | _ -> false
+    in
+    match (retrieve_ips frame), (retrieve_ports tx_layer) with
+    | Some (src, dst), Some (sport, dport) -> begin
+        (* only Organization and Global scope IPs get routed *)
+        match check_scope src, check_scope dst with
+        | true, true -> (
+            match Lookup.insert table proto (src, sport) (dst, dport) (xl_ip, xl_port)
+            with
+            | Some t -> Ok t
+            | None -> Overlap 
+          )
+        | _, _ -> Unparseable
+      end
+
+| _, _ -> Unparseable

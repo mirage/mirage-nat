@@ -5,7 +5,7 @@ let zero_cstruct cs =
   let i = Cstruct.iter (fun c -> Some 1) zero cs in
   Cstruct.fold (fun b a -> b) i cs
 
-let basic_ipv4_frame proto src dst ttl smac_addr =
+let basic_ipv4_frame ?(frame_size=1024) proto src dst ttl smac_addr =
   (* copied from mirage-tcpip/lib/ipv4/allocate_frame, which unfortunately
     requires a whole ipv4 record type as an argument in order to extract the mac
      address from the record *)
@@ -13,8 +13,9 @@ let basic_ipv4_frame proto src dst ttl smac_addr =
      could call allocate_frame with a Macaddr.t directly *)
   (* need to make sure this is zeroed, which we get for free w/io_page but not
      cstruct *)
-  let ethernet_frame = zero_cstruct (Cstruct.create (Wire_structs.sizeof_ethernet +
-                                                     Wire_structs.sizeof_ipv4)) in (* altered *)
+  let ethernet_frame = zero_cstruct (Cstruct.create frame_size) in (* altered *)
+  Cstruct.set_len ethernet_frame (Wire_structs.sizeof_ethernet +
+                                  Wire_structs.sizeof_ipv4);
   let smac = Macaddr.to_bytes smac_addr in (* altered *)
   Wire_structs.set_ethernet_src smac 0 ethernet_frame;
   Wire_structs.set_ethernet_ethertype ethernet_frame 0x0800;
@@ -27,12 +28,14 @@ let basic_ipv4_frame proto src dst ttl smac_addr =
   Wire_structs.set_ipv4_proto buf proto;
   Wire_structs.set_ipv4_src buf (Ipaddr.V4.to_int32 src); (* altered *)
   Wire_structs.set_ipv4_dst buf (Ipaddr.V4.to_int32 dst);
+  Wire_structs.set_ipv4_id buf 0x4142;
   let len = Wire_structs.sizeof_ethernet + Wire_structs.sizeof_ipv4 in
-  (* len is sizeof_ethernet + sizezof_ipv4 *)
   (ethernet_frame, len)
 
 let basic_ipv6_frame proto src dst ttl smac_addr =
-  let ethernet_frame = zero_cstruct (Cstruct.create 1024) in (* altered *)
+  let ethernet_frame = zero_cstruct (Cstruct.create
+                                       (Wire_structs.sizeof_ethernet +
+                                        Wire_structs.Ipv6_wire.sizeof_ipv6)) in (* altered *)
   let ip_layer = Cstruct.shift ethernet_frame Wire_structs.sizeof_ethernet in 
   let smac = Macaddr.to_bytes smac_addr in (* altered *)
   Wire_structs.set_ethernet_src smac 0 ethernet_frame;
@@ -207,9 +210,9 @@ let test_make_entry_valid_pkt context =
   let xl_ip = Ipaddr.V4.of_string_exn "172.16.0.1" in
   let xl_port = 10201 in
   let smac_addr = Macaddr.of_string_exn "00:16:3e:65:65:65" in
+  let table = Lookup.empty () in
   let (frame, len) = basic_ipv4_frame proto src dst 52 smac_addr in
   let (frame, len) = add_udp (frame, len) sport dport in
-  let table = Lookup.empty () in
   match Rewrite.make_entry table frame (Ipaddr.V4 xl_ip) xl_port with
   | Overlap -> assert_failure "make_entry claimed overlap when inserting into an
                  empty table"
@@ -221,21 +224,21 @@ let test_make_entry_valid_pkt context =
     (* make sure table actually has the entries we expect *)
     let check_entries src_lookup dst_lookup = 
       (* TODO: rewrite this; assert_equal and a printer function would be
-        clearer *)
+         clearer *)
       match src_lookup, dst_lookup with
-      | Some (xl_ip, xl_port), Some (src, sport) -> () (* yay! *)
+      | Some (xl_ip, xl_port), Some (src, sport) -> assert_equal 1 1 (* yay! *)
       | Some (q_ip, q_port), Some (r_ip, r_port) -> 
         let err = Printf.sprintf "Bad entry from make_entry: %s, %d; %s, %d\n" 
             (Ipaddr.to_string q_ip) q_port (Ipaddr.to_string r_ip) r_port in
         assert_failure err
-      | None, _ | _, None -> assert_failure 
+      | None, None -> assert_failure 
         "make_entry claimed success, but was missing expected entries entirely"
     in
     let src_lookup = Lookup.lookup t proto (V4 src, sport) (V4 dst, dport) in
-    let dst_lookup = Lookup.lookup t proto (V4 xl_ip, xl_port) (V4 dst, dport) in
+    let dst_lookup = Lookup.lookup t proto (V4 dst, dport) (V4 xl_ip, xl_port) in
     check_entries src_lookup dst_lookup;
     (* trying the same operation again should give us an Overlap failure *)
-    match Rewrite.make_entry table frame (Ipaddr.V4 xl_ip) xl_port with
+    match Rewrite.make_entry t frame (Ipaddr.V4 xl_ip) xl_port with
     | Overlap -> ()
     | Unparseable -> 
       Printf.printf "Allegedly unparseable frame follows:\n";
@@ -252,19 +255,22 @@ let test_make_entry_nonsense context =
   let xl_ip = Ipaddr.V4.of_string_exn "172.16.0.1" in
   let xl_port = 10201 in
   let smac_addr = Macaddr.of_string_exn "00:16:3e:65:65:65" in
-  let mangled_looking, _ = basic_ipv4_frame proto src dst 60 smac_addr in
+  let frame_size = (Wire_structs.sizeof_ethernet + Wire_structs.sizeof_ipv4) in
+  let mangled_looking, _ = basic_ipv4_frame ~frame_size proto src dst 60 smac_addr in
   match (Rewrite.make_entry (Lookup.empty ()) mangled_looking
            (Ipaddr.V4 xl_ip) xl_port) with
-  | Ok _ | Overlap -> assert_failure "make_entry happily took a mangled packet"
+  | Overlap -> assert_failure "make_entry claimed a mangled packet was already
+  in the table"
+  | Ok t -> assert_failure "make_entry happily took a mangled packet"
   | Unparseable -> 
-    let broadcast_dst = Ipaddr.V4.of_string_exn "255.255.255.0" in
+    let broadcast_dst = Ipaddr.V4.of_string_exn "255.255.255.255" in
     let sport = 45454 in
     let dport = 80 in
-    let broadcast, _ = add_tcp (basic_ipv4_frame 6 src dst 30 smac_addr)
+    let broadcast, _ = add_tcp (basic_ipv4_frame 6 src broadcast_dst 30 smac_addr)
         sport dport in
     match (Rewrite.make_entry (Lookup.empty ()) broadcast (Ipaddr.V4 xl_ip)
              xl_port) with
-    | Ok _ | Overlap -> assert_failure "make_entry happily took a mangled
+    | Ok _ | Overlap -> assert_failure "make_entry happily took a broadcast
     packet"
     | Unparseable -> 
       (* try just an ethernet frame *)
