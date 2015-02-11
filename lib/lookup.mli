@@ -14,4 +14,9 @@ val insert : table -> protocol -> (Ipaddr.t * port) -> (Ipaddr.t * port) -> (Ipa
 val delete : table -> protocol -> (Ipaddr.t * port) -> (Ipaddr.t * port) -> (Ipaddr.t * port ) ->
   table
 
+val length : table -> int
+
+(* 
+val dump_table : table -> unit
+*)
 val empty : unit -> table
