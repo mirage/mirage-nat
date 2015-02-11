@@ -13,8 +13,8 @@ let basic_ipv4_frame proto src dst ttl smac_addr =
      could call allocate_frame with a Macaddr.t directly *)
   (* need to make sure this is zeroed, which we get for free w/io_page but not
      cstruct *)
-  let ethernet_frame = zero_cstruct (Cstruct.create (Cstruct.sizeof_ethernet +
-                                                     Cstruct.sizeof_ipv4)) in (* altered *)
+  let ethernet_frame = zero_cstruct (Cstruct.create (Wire_structs.sizeof_ethernet +
+                                                     Wire_structs.sizeof_ipv4)) in (* altered *)
   let smac = Macaddr.to_bytes smac_addr in (* altered *)
   Wire_structs.set_ethernet_src smac 0 ethernet_frame;
   Wire_structs.set_ethernet_ethertype ethernet_frame 0x0800;
