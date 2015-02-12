@@ -104,22 +104,35 @@ let test_ipv4_rewriting exp_src exp_dst exp_proto exp_ttl xl_frame =
   
   ()
 
-let test_tcp_ipv4 context = 
-  let proto = 6 in
-  let src = (Ipaddr.V4.of_string_exn "192.168.108.26") in
-  let dst = (Ipaddr.V4.of_string_exn "4.141.2.6") in 
-  let xl = (Ipaddr.V4.of_string_exn "128.104.108.1") in
+let basic_tcpv4 (direction : Rewrite.direction) proto ttl src dst xl sport dport xlport =
   let smac_addr = Macaddr.of_string_exn "00:16:3e:ff:00:ff" in
-  let ttl = 4 in
-  let (frame, len) = basic_ipv4_frame proto src dst ttl smac_addr in
-  let (frame, len) = add_tcp (frame, len) 255 1024 in
+  let (frame, len) = 
+    match direction with
+    | Destination -> basic_ipv4_frame proto src dst ttl smac_addr 
+    | Source -> basic_ipv4_frame proto dst xl ttl smac_addr
+  in
+  let frame, _ = 
+    match direction with
+    | Destination -> add_tcp (frame, len) sport dport 
+    | Source -> add_tcp (frame, len) dport xlport 
+  in
   let table = 
     match Lookup.insert (Hashtbl.create 2) proto
-            ((V4 src), 255) ((V4 dst), 1024) ((V4 xl), 45454)
+            ((V4 src), sport) ((V4 dst), dport) ((V4 xl), xlport)
     with
     | Some t -> t
     | None -> assert_failure "Failed to insert test data into table structure"
   in
+  frame, table
+
+let test_tcp_ipv4 context = 
+  let ttl = 4 in
+  let proto = 6 in
+  let src = (Ipaddr.V4.of_string_exn "192.168.108.26") in
+  let dst = (Ipaddr.V4.of_string_exn "4.141.2.6") in 
+  let xl = (Ipaddr.V4.of_string_exn "128.104.108.1") in
+  let sport, dport, xlport = 255,1024,45454 in
+  let frame, table = basic_tcpv4 Destination proto ttl src dst xl sport dport xlport in
   let translated_frame = Rewrite.translate table Destination frame in
   match translated_frame with
   | None -> assert_failure "Expected translateable frame wasn't rewritten"
@@ -131,14 +144,39 @@ let test_tcp_ipv4 context =
     let xl_tcp = Cstruct.shift xl_ipv4 (Wire_structs.sizeof_ipv4) in
     let payload = Cstruct.shift xl_tcp (Wire_structs.Tcp_wire.sizeof_tcp) in
     (* check that src port is the same *)
-    assert_equal 255 (Wire_structs.Tcp_wire.get_tcp_src_port xl_tcp);
+    assert_equal sport (Wire_structs.Tcp_wire.get_tcp_src_port xl_tcp);
     (* dst port should have been rewritten *)
-    assert_equal 45454 (Wire_structs.Tcp_wire.get_tcp_dst_port xl_tcp);
+    assert_equal xlport (Wire_structs.Tcp_wire.get_tcp_dst_port xl_tcp);
     (* payload should be the same *)
     assert_equal (Cstruct.shift xl_frame (Wire_structs.sizeof_ethernet +
                                           Wire_structs.sizeof_ipv4 +
                                           Wire_structs.Tcp_wire.sizeof_tcp))
-      payload
+      payload;
+
+  (* OK, apparently destination rewriting is all well and good; let's check
+     source rewriting *)
+    let frame, table = basic_tcpv4 Source proto ttl src dst xl sport dport xlport in
+    let translated_frame = Rewrite.translate table Source frame in
+    match translated_frame with
+    | None -> assert_failure "Expected translateable frame wasn't rewritten"
+    | Some xl_frame -> 
+      (* check basic ipv4 stuff *)
+      (* lookup (dst, xl) -> src, put src in dst column *)
+      test_ipv4_rewriting dst src proto (ttl - 1) xl_frame;
+
+      let xl_ipv4 = Cstruct.shift xl_frame (Wire_structs.sizeof_ethernet) in
+      let xl_tcp = Cstruct.shift xl_ipv4 (Wire_structs.sizeof_ipv4) in
+      let payload = Cstruct.shift xl_tcp (Wire_structs.Tcp_wire.sizeof_tcp) in
+      (* check that src port is the same *)
+      assert_equal dport(Wire_structs.Tcp_wire.get_tcp_src_port xl_tcp);
+      (* dst port should have been rewritten *)
+      assert_equal sport (Wire_structs.Tcp_wire.get_tcp_dst_port xl_tcp);
+      (* payload should be the same *)
+      assert_equal (Cstruct.shift xl_frame (Wire_structs.sizeof_ethernet +
+                                            Wire_structs.sizeof_ipv4 +
+                                            Wire_structs.Tcp_wire.sizeof_tcp))
+        payload
+
 
     (* TODO: no checksum checking right now, since we leave that for the actual
 sender to take care of *)
