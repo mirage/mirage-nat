@@ -10,20 +10,15 @@ type protocol = int
 type port = int (* TODO: should probably formalize that this is uint16 *)
 type t = (protocol * (Ipaddr.t * port) * (Ipaddr.t * port), (Ipaddr.t * port)) Hashtbl.t
 
-(* 
-let dump_table (table : table) =
+let string_of_t (table : t) =
   let print_pair (addr, port) =
     Printf.sprintf "addr %s , port %d (%x) " (Ipaddr.to_string addr) port port
   in
-  Hashtbl.iter (
-    fun (proto, left, right) answer -> 
-      Printf.printf "proto %d (%x): %s, %s -> %s\n" 
+  Hashtbl.fold (
+    fun (proto, left, right) answer str -> 
+      Printf.sprintf "%s proto %d (%x): %s, %s -> %s\n" str
         proto proto (print_pair left) (print_pair right) (print_pair answer)
-  ) table
-*)
-
-(* this is really only useful for debugging *)
-let length table = Hashtbl.length table
+  ) table ""
 
 let lookup table proto left right =
   match Hashtbl.mem table (proto, left, right) with
