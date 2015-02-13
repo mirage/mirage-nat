@@ -1,9 +1,16 @@
 open OUnit2
+open Ipaddr
+open Rewrite
 
 let zero_cstruct cs =
   let zero c = Cstruct.set_char c 0 '\000' in
   let i = Cstruct.iter (fun c -> Some 1) zero cs in
   Cstruct.fold (fun b a -> b) i cs
+
+let ip_and_above_of_frame frame =
+  match (Wire_structs.get_ethernet_ethertype frame) with
+  | 0x0800 | 0x86dd -> Cstruct.shift frame Wire_structs.sizeof_ethernet
+  | _ -> assert_failure "tried to get ip layer of non-ip frame"
 
 let basic_ipv4_frame ?(frame_size=1024) proto src dst ttl smac_addr =
   (* copied from mirage-tcpip/lib/ipv4/allocate_frame, which unfortunately
@@ -14,12 +21,12 @@ let basic_ipv4_frame ?(frame_size=1024) proto src dst ttl smac_addr =
   (* need to make sure this is zeroed, which we get for free w/io_page but not
      cstruct *)
   let ethernet_frame = zero_cstruct (Cstruct.create frame_size) in (* altered *)
-  Cstruct.set_len ethernet_frame (Wire_structs.sizeof_ethernet +
-                                  Wire_structs.sizeof_ipv4);
+  let ethernet_frame = Cstruct.set_len ethernet_frame 
+      (Wire_structs.sizeof_ethernet + Wire_structs.sizeof_ipv4) in
   let smac = Macaddr.to_bytes smac_addr in (* altered *)
   Wire_structs.set_ethernet_src smac 0 ethernet_frame;
   Wire_structs.set_ethernet_ethertype ethernet_frame 0x0800;
-  let buf = Cstruct.shift ethernet_frame Wire_structs.sizeof_ethernet in
+  let buf = ip_and_above_of_frame ethernet_frame in
   (* Write the constant IPv4 header fields *)
   Wire_structs.set_ipv4_hlen_version buf ((4 lsl 4) + (5)); 
   Wire_structs.set_ipv4_tos buf 0;
@@ -36,7 +43,7 @@ let basic_ipv6_frame proto src dst ttl smac_addr =
   let ethernet_frame = zero_cstruct (Cstruct.create
                                        (Wire_structs.sizeof_ethernet +
                                         Wire_structs.Ipv6_wire.sizeof_ipv6)) in (* altered *)
-  let ip_layer = Cstruct.shift ethernet_frame Wire_structs.sizeof_ethernet in 
+  let ip_layer = ip_and_above_of_frame ethernet_frame in
   let smac = Macaddr.to_bytes smac_addr in (* altered *)
   Wire_structs.set_ethernet_src smac 0 ethernet_frame;
   Wire_structs.set_ethernet_ethertype ethernet_frame 0x86dd;
@@ -93,11 +100,12 @@ let test_ipv4_rewriting exp_src exp_dst exp_proto exp_ttl xl_frame =
   assert_equal ~printer:string_of_int exp_ttl (Wire_structs.get_ipv4_ttl ipv4);
 
   (* IPv4 checksum should be correct, meaning that one's complement of packet +
-     checksum = 0 *) (*
+     checksum = 0 *) 
+  (* 
   let just_ipv4 = Cstruct.sub ipv4 0 (Wire_structs.sizeof_ipv4) in
-  assert_equal ~printer:string_of_int 0 (Tcpip_checksum.ones_complement just_ipv4)
-  *)
-  
+  assert_equal ~printer:string_of_int 0 (Tcpip_checksum.ones_complement
+                                           just_ipv4);
+ *) 
   ()
 
 let basic_tcpv4 (direction : Rewrite.direction) proto ttl src dst xl sport dport xlport =
@@ -294,16 +302,18 @@ let test_make_entry_valid_pkt context =
     assert_failure "make_entry claimed that a reference packet was unparseable"
   | Ok t ->
     (* make sure table actually has the entries we expect *)
-    let check_entries src_lookup dst_lookup = 
+    let check_entries (src_lookup : (Ipaddr.t * int) option) dst_lookup = 
       (* TODO: rewrite this; assert_equal and a printer function would be
          clearer *)
       match src_lookup, dst_lookup with
-      | Some (xl_ip, xl_port), Some (src, sport) -> assert_equal 1 1 (* yay! *)
+      | Some (q_ip, q_port), Some (r_ip, r_port) when 
+          (q_ip, q_port, r_ip, r_port) = (V4 xl_ip, xl_port, V4 src, sport) -> ()
       | Some (q_ip, q_port), Some (r_ip, r_port) -> 
         let err = Printf.sprintf "Bad entry from make_entry: %s, %d; %s, %d\n" 
-            (Ipaddr.to_string q_ip) q_port (Ipaddr.to_string r_ip) r_port in
+            (Ipaddr.to_string q_ip) q_port 
+            (Ipaddr.to_string r_ip) r_port in
         assert_failure err
-      | None, None -> assert_failure 
+      | _, None | None, _ -> assert_failure 
         "make_entry claimed success, but was missing expected entries entirely"
     in
     let src_lookup = Lookup.lookup t proto (V4 src, sport) (V4 dst, dport) in
