@@ -12,6 +12,20 @@ let ip_and_above_of_frame frame =
   | 0x0800 | 0x86dd -> Cstruct.shift frame Wire_structs.sizeof_ethernet
   | _ -> assert_failure "tried to get ip layer of non-ip frame"
 
+let transport_and_above_of_ip ip = 
+  let hlen_version = Wire_structs.get_ipv4_hlen_version ip in
+  match ((hlen_version land 0xf0) lsr 4) with
+  | 4 -> (* length (in words, not bytes) is in the other half of hlen_version *)
+    Cstruct.shift ip ((hlen_version land 0x0f) * 4)
+  | 6 -> (* ipv6 is a constant length *)
+    Cstruct.shift ip Wire_structs.Ipv6_wire.sizeof_ipv6
+  | n -> 
+    let err = 
+      (Printf.sprintf 
+         "tried to get transport layer of a non-ip frame (hlen/vers %x) " n)
+    in
+    assert_failure err
+
 let basic_ipv4_frame ?(frame_size=1024) proto src dst ttl smac_addr =
   (* copied from mirage-tcpip/lib/ipv4/allocate_frame, which unfortunately
     requires a whole ipv4 record type as an argument in order to extract the mac
@@ -85,34 +99,26 @@ let add_udp (frame, len) source_port dest_port =
 
 let test_ipv4_rewriting exp_src exp_dst exp_proto exp_ttl xl_frame =
   (* should still be an ipv4 frame *)
-  assert_equal 0x0800 (Wire_structs.get_ethernet_ethertype xl_frame);
-  let ipv4 = Cstruct.shift xl_frame (Wire_structs.sizeof_ethernet) in
   let printer a = Ipaddr.V4.to_string (Ipaddr.V4.of_int32 a) in
+  let ipv4 = ip_and_above_of_frame xl_frame in
+
+  (* should still be an ipv4 packet *)
+  assert_equal 0x0800 (Wire_structs.get_ethernet_ethertype xl_frame);
 
   assert_equal ~printer (Ipaddr.V4.to_int32 (exp_src)) (Wire_structs.get_ipv4_src ipv4);
-
   assert_equal ~printer (Ipaddr.V4.to_int32 (exp_dst)) (Wire_structs.get_ipv4_dst ipv4);
-  
-  (* proto should be unaltered *)
   assert_equal ~printer:string_of_int exp_proto (Wire_structs.get_ipv4_proto ipv4);
 
   (* TTL should be the expected value, which the caller sets to k-1 *)
-  assert_equal ~printer:string_of_int exp_ttl (Wire_structs.get_ipv4_ttl ipv4);
+  assert_equal ~printer:string_of_int exp_ttl (Wire_structs.get_ipv4_ttl ipv4)
 
-  (* IPv4 checksum should be correct, meaning that one's complement of packet +
-     checksum = 0 *) 
-  (* 
-  let just_ipv4 = Cstruct.sub ipv4 0 (Wire_structs.sizeof_ipv4) in
-  assert_equal ~printer:string_of_int 0 (Tcpip_checksum.ones_complement
-                                           just_ipv4);
- *) 
-  ()
+  (* don't do checksum checking for now *)
 
 let basic_tcpv4 (direction : Rewrite.direction) proto ttl src dst xl sport dport xlport =
   let smac_addr = Macaddr.of_string_exn "00:16:3e:ff:00:ff" in
   let (frame, len) = 
     match direction with
-    (* given that "src" is the "internal" ip, 
+    (* given that src is the "internal" ip, 
        dst is some "external" host,
        and xl is the nat IP that faces the "external" host,
        construct a packet for which the default table would have matches in the
@@ -121,20 +127,19 @@ let basic_tcpv4 (direction : Rewrite.direction) proto ttl src dst xl sport dport
       the packet should look like it's coming from an external host, 
       destined for the xl ip, so Rewrite can replace xl with src. *)
     | Destination -> basic_ipv4_frame proto dst xl ttl smac_addr 
-                       (* if Rewrite.translate should be overwriting the Source
-field, the packet should look like it's coming from an internal host, going to
-                         a public ip like dst, so Rewrite.translate can replace
-src with xl. *)
+    (* if Rewrite.translate should be overwriting the Source field, 
+       the packet should look like it's coming from an internal host, going to
+       a public ip like dst, so Rewrite.translate can replace src with xl. *)
     | Source -> basic_ipv4_frame proto src dst ttl smac_addr
   in
   let frame, _ = 
     match direction with
     (* situation where you want to rewrite destination:
-      * inbound packet from something that already has a table entry
-       (s/dst/xl/)
-    *)
+     * inbound packet from something that already has a table entry
+     * (s/dst/xl/)
+     *)
     | Destination -> add_tcp (frame, len) dport xlport
-                       (* rewrite source for outbound packets (s/src/xl/) *)
+    (* rewrite source for outbound packets (s/src/xl/) *)
     | Source -> add_tcp (frame, len) sport dport
   in
   let table = 
@@ -152,12 +157,13 @@ let test_tcp_ipv4_dst context =
   let src = (Ipaddr.V4.of_string_exn "192.168.108.26") in
   let dst = (Ipaddr.V4.of_string_exn "4.141.2.6") in 
   let xl = (Ipaddr.V4.of_string_exn "128.104.108.1") in
-  let sport, dport, xlport = 255,1024,45454 in
+  let sport, dport, xlport = 255, 1024, 45454 in
   let frame, table = basic_tcpv4 Destination proto ttl src dst xl sport dport xlport in
-  (* should get back a frame that needs destination rewriting -- 
+  (* basic_tcpv4 should return a frame that needs destination rewriting -- 
    * i.e., one from 4.141.2.6 (dst) to 128.104.108.1 (xl), which needs to have
     * 128.104.108.1 (xl) rewritten to 192.168.108.26 (src) *)
-    test_ipv4_rewriting dst xl proto (ttl) frame;
+  test_ipv4_rewriting dst xl proto (ttl) frame;
+
   let translated_frame = Rewrite.translate table Destination frame in
   match translated_frame with
   | None -> assert_failure "Expected translateable frame wasn't rewritten"
@@ -165,17 +171,21 @@ let test_tcp_ipv4_dst context =
     (* check basic ipv4 stuff *)
     test_ipv4_rewriting dst src proto (ttl - 1) xl_frame;
 
-    let xl_ipv4 = Cstruct.shift xl_frame (Wire_structs.sizeof_ethernet) in
-    let xl_tcp = Cstruct.shift xl_ipv4 (Wire_structs.sizeof_ipv4) in
+    let xl_ipv4 = ip_and_above_of_frame xl_frame in
+    let xl_tcp = transport_and_above_of_ip xl_ipv4 in
     let payload = Cstruct.shift xl_tcp (Wire_structs.Tcp_wire.sizeof_tcp) in
+
     (* check that src port is the same *)
-    assert_equal ~printer:string_of_int dport (Wire_structs.Tcp_wire.get_tcp_src_port xl_tcp);
+    assert_equal ~printer:string_of_int dport 
+      (Wire_structs.Tcp_wire.get_tcp_src_port xl_tcp);
     (* dst port should have been rewritten *)
-    assert_equal ~printer:string_of_int sport (Wire_structs.Tcp_wire.get_tcp_dst_port xl_tcp);
+    assert_equal ~printer:string_of_int sport 
+      (Wire_structs.Tcp_wire.get_tcp_dst_port xl_tcp);
+
     (* payload should be the same *)
-    assert_equal (Cstruct.shift xl_frame (Wire_structs.sizeof_ethernet +
-                                          Wire_structs.sizeof_ipv4 +
-                                          Wire_structs.Tcp_wire.sizeof_tcp))
+    (* TODO: TCP is a variable-length header; this shift will fail if options
+       are set *)
+    assert_equal (Cstruct.shift xl_tcp Wire_structs.Tcp_wire.sizeof_tcp)
       payload
 
 let test_tcp_ipv4_src context = 
@@ -185,24 +195,21 @@ let test_tcp_ipv4_src context =
   let dst = (Ipaddr.V4.of_string_exn "4.141.2.6") in 
   let xl = (Ipaddr.V4.of_string_exn "128.104.108.1") in
   let sport, dport, xlport = 255,1024,45454 in
-  (* OK, apparently destination rewriting is all well and good; let's check
-     source rewriting *)
   let frame, table = basic_tcpv4 Source proto ttl src dst xl sport dport xlport in
   test_ipv4_rewriting src dst proto ttl frame;
   (* make sure things are set right in initial frame *)
-      assert_equal ~printer:string_of_int dport 
-        (Wire_structs.Tcp_wire.get_tcp_dst_port (Cstruct.shift frame
-                                                   (Wire_structs.sizeof_ethernet
-                                                 + Wire_structs.sizeof_ipv4) ));
-    let translated_frame = Rewrite.translate table Source frame in
+  assert_equal ~printer:string_of_int dport 
+    (Wire_structs.Tcp_wire.get_tcp_dst_port (transport_and_above_of_ip 
+                                               (ip_and_above_of_frame frame)));
+  let translated_frame = Rewrite.translate table Source frame in
     match translated_frame with
     | None -> assert_failure "Expected translateable frame wasn't rewritten"
     | Some xl_frame -> 
       (* check basic ipv4 stuff *)
       test_ipv4_rewriting xl dst proto (ttl - 1) xl_frame;
 
-      let xl_ipv4 = Cstruct.shift xl_frame (Wire_structs.sizeof_ethernet) in
-      let xl_tcp = Cstruct.shift xl_ipv4 (Wire_structs.sizeof_ipv4) in
+      let xl_ipv4 = ip_and_above_of_frame xl_frame in
+      let xl_tcp = transport_and_above_of_ip xl_ipv4 in
       let payload = Cstruct.shift xl_tcp (Wire_structs.Tcp_wire.sizeof_tcp) in
 
       (* src port should have been rewritten from sport to xlport *)
@@ -214,11 +221,10 @@ let test_tcp_ipv4_src context =
         (Wire_structs.Tcp_wire.get_tcp_dst_port xl_tcp);
 
       (* payload should be the same *)
-      assert_equal (Cstruct.shift xl_frame (Wire_structs.sizeof_ethernet +
-                                            Wire_structs.sizeof_ipv4 +
-                                            Wire_structs.Tcp_wire.sizeof_tcp))
-        payload
-
+      let original_payload = 
+        Cstruct.shift (transport_and_above_of_ip (ip_and_above_of_frame frame))
+          Wire_structs.Tcp_wire.sizeof_tcp in
+      assert_equal original_payload payload
 
     (* TODO: no checksum checking right now, since we leave that for the actual
 sender to take care of *)
@@ -246,17 +252,18 @@ let test_udp_ipv4 context =
     (* check to see whether ipv4-level translation happened as expected *)
     test_ipv4_rewriting src xl proto (ttl - 1) xl_frame;
 
+    let xl_ipv4 = ip_and_above_of_frame xl_frame in
+    let xl_udp = transport_and_above_of_ip xl_ipv4 in
+
     (* UDP destination port should have changed *)
-    let udp = Cstruct.shift xl_frame (Wire_structs.sizeof_ethernet + 
-                                      Wire_structs.sizeof_ipv4) in
     assert_equal ~printer:string_of_int 45454 (Wire_structs.get_udp_dest_port
-                                                 udp);
+                                                 xl_udp);
 
     (* payload should be unaltered *)
-    let xl_payload = Cstruct.shift udp (Wire_structs.sizeof_udp) in
-    let original_payload = Cstruct.shift frame (Wire_structs.sizeof_ethernet +
-                                                Wire_structs.sizeof_ipv4 +
-                                                Wire_structs.sizeof_udp) in
+    let xl_payload = Cstruct.shift xl_udp (Wire_structs.sizeof_udp) in
+      let original_payload = 
+        Cstruct.shift (transport_and_above_of_ip (ip_and_above_of_frame frame))
+          Wire_structs.sizeof_udp in
     assert_equal ~printer:Cstruct.to_string xl_payload original_payload
     (* TODO: checksum checks *)
 
@@ -370,11 +377,14 @@ let test_tcp_ipv6 context =
 let suite = "test-rewrite" >:::
             [
               "UDP IPv4 rewriting works" >:: test_udp_ipv4;
+              (* TODO UDP IPv4 source rewriting test *)
               "TCP IPv4 destination rewriting works" >:: test_tcp_ipv4_dst ;
               "TCP IPv4 source rewriting works" >:: test_tcp_ipv4_src ;
               "UDP IPv6 rewriting works" >:: test_udp_ipv6;
               "TCP IPv6 rewriting works" >:: test_tcp_ipv6; 
+              (* TODO: 4-to-6, 6-to-4 tests *)
               "make_entry makes entries" >:: test_make_entry_valid_pkt;
+              (* TODO: test make_entry in non-ipv4 contexts *)
               "make_entry refuses nonsense frames" >:: test_make_entry_nonsense
             ]
 
