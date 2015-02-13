@@ -43,10 +43,10 @@ let basic_ipv6_frame proto src dst ttl smac_addr =
   let ethernet_frame = zero_cstruct (Cstruct.create
                                        (Wire_structs.sizeof_ethernet +
                                         Wire_structs.Ipv6_wire.sizeof_ipv6)) in (* altered *)
-  let ip_layer = ip_and_above_of_frame ethernet_frame in
   let smac = Macaddr.to_bytes smac_addr in (* altered *)
   Wire_structs.set_ethernet_src smac 0 ethernet_frame;
   Wire_structs.set_ethernet_ethertype ethernet_frame 0x86dd;
+  let ip_layer = ip_and_above_of_frame ethernet_frame in
   Wire_structs.Ipv6_wire.set_ipv6_version_flow ip_layer 0x60000000l;
   Wire_structs.Ipv6_wire.set_ipv6_src (Ipaddr.V6.to_bytes src) 0 ip_layer;
   Wire_structs.Ipv6_wire.set_ipv6_dst (Ipaddr.V6.to_bytes dst) 0 ip_layer;
@@ -278,8 +278,9 @@ let test_udp_ipv6 context =
     | None -> assert_failure "Failed to insert test data into table structure"
   in
   match Rewrite.translate table Destination frame with
-  | None -> assert_failure "Couldn't translate an IPv6 UDP frame"
-  | Some xl_frame -> assert_failure "Test not implemented :("
+  | None -> todo "Couldn't translate an IPv6 UDP frame"
+  | Some xl_frame -> todo "Sanity checks for IPv6 UDP frame translation not
+  implemented yet :("
 
 let test_make_entry_valid_pkt context =
   let proto = 17 in
@@ -364,15 +365,15 @@ let test_make_entry_nonsense context =
       | Unparseable -> ()
 
 let test_tcp_ipv6 context =
-  assert_failure "Test not implemented :("
+  todo "Test not implemented :("
 
 let suite = "test-rewrite" >:::
             [
               "UDP IPv4 rewriting works" >:: test_udp_ipv4;
               "TCP IPv4 destination rewriting works" >:: test_tcp_ipv4_dst ;
               "TCP IPv4 source rewriting works" >:: test_tcp_ipv4_src ;
-              (* "UDP IPv6 rewriting works" >:: test_udp_ipv6;
-                 "TCP IPv6 rewriting works" >:: test_tcp_ipv6; *) 
+              "UDP IPv6 rewriting works" >:: test_udp_ipv6;
+              "TCP IPv6 rewriting works" >:: test_tcp_ipv6; 
               "make_entry makes entries" >:: test_make_entry_valid_pkt;
               "make_entry refuses nonsense frames" >:: test_make_entry_nonsense
             ]
