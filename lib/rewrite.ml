@@ -74,8 +74,6 @@ type insert_result =
   | Overlap
   | Unparseable
 
-let ipv4_of_frame frame =
-
 let retrieve_ips frame = 
   let ip_type = Wire_structs.get_ethernet_ethertype frame in
   let ip_packet = Cstruct.shift frame Wire_structs.sizeof_ethernet in
@@ -127,28 +125,6 @@ let translate table direction frame =
     let new_csum = Tcpip_checksum.ones_complement just_ipv4 in
     Wire_structs.set_ipv4_csum ip_layer new_csum
   in
-  let recalculate_udp_checksum frame udp_layer =
-    (* set the checksum to 0 before recalculating *)
-    (* TODO I'm pretty sure I see the problem --  we should call with ethernet
-      level frame and then a list consisting of udp_header :: payload *)
-    Wire_structs.set_udp_checksum udp_layer 0;
-    let cs = checksum frame
-        (udp_layer ::
-         (Cstruct.shift udp_layer (Wire_structs.sizeof_udp)) :: [] )
-    in
-    Wire_structs.set_udp_checksum udp_layer cs
-  in
-  let recalculate_tcp_checksum frame tcp_layer =
-    (* set checksum to 0 *)
-    (* TODO: these shifts don't work if options are set *)
-    Wire_structs.Tcp_wire.set_tcp_checksum tcp_layer 0;
-    let cs = checksum frame (tcp_layer :: (Cstruct.shift tcp_layer
-                                             Wire_structs.Tcp_wire.sizeof_tcp)
-                             :: [])
-    in
-    Wire_structs.Tcp_wire.set_tcp_checksum tcp_layer cs
-  in
-  let ip_type = Wire_structs.get_ethernet_ethertype frame in
   let ip_packet = Cstruct.shift frame Wire_structs.sizeof_ethernet in
   match (retrieve_ips frame) with
   | Some (V4 src, V4 dst) -> (* ipv4 *) (
