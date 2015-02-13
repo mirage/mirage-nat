@@ -74,19 +74,8 @@ type insert_result =
   | Overlap
   | Unparseable
 
-(* reproduced from ipv4.checksum *)
-let checksum =
-  let pbuf = Cstruct.create 4 in
-  Cstruct.set_uint8 pbuf 0 0;
-  fun frame bufs ->
-    let frame = Cstruct.shift frame Wire_structs.sizeof_ethernet in
-    Cstruct.set_uint8 pbuf 1 (Wire_structs.get_ipv4_proto frame);
-    Cstruct.BE.set_uint16 pbuf 2 (Cstruct.lenv bufs);
-    let src_dst = Cstruct.sub frame 12 (2 * 4) in
-    Tcpip_checksum.ones_complement_list (src_dst :: pbuf :: bufs)
+let ipv4_of_frame frame =
 
-(* TODO: it's not clear where this function should be, but it probably shouldn't
-   be here in the long run. *)
 let retrieve_ips frame = 
   let ip_type = Wire_structs.get_ethernet_ethertype frame in
   let ip_packet = Cstruct.shift frame Wire_structs.sizeof_ethernet in
@@ -102,7 +91,6 @@ let retrieve_ips frame =
   | _ -> None
 
 let retrieve_ports tx_layer = 
-  (* Cstruct.uint16, Cstruct.uint16 *)
   if (Cstruct.len tx_layer < (Wire_structs.sizeof_udp)) then None else Some
   ((Wire_structs.get_udp_source_port tx_layer : int), 
    (Wire_structs.get_udp_dest_port tx_layer : int))
@@ -117,19 +105,15 @@ let translate table direction frame =
   (* TODO: this is not the right set of parameters for a function that might
      have to do 6-to-4 translation *)
   (* also, TODO all of the 6-to-4/4-to-6 thoughts and code.  nbd. *)
-  let rewrite_ip is_ipv6 (packet : Cstruct.t) direction i =
-    match (is_ipv6, direction, i) with
-    | false, Source, Ipaddr.V4 new_ip -> 
-      Wire_structs.set_ipv4_src packet (Ipaddr.V4.to_int32 new_ip)
-    | false, Destination, Ipaddr.V4 new_ip ->
+  let rewrite_ip is_ipv6 (packet : Cstruct.t) i =
+    match (is_ipv6, i) with
+    | false, Ipaddr.V4 new_ip ->
       Wire_structs.set_ipv4_dst packet (Ipaddr.V4.to_int32 new_ip)
     (* TODO: every other case *)
-    | _, _, _ -> raise (Failure "ipv4-ipv4 is the only implemented case")
+    | _, _ -> raise (Failure "ipv4-ipv4 is the only implemented case")
   in
-  let rewrite_port (txlayer : Cstruct.t) direction port =
-    match direction with
-    | Source -> Wire_structs.set_udp_source_port txlayer port
-    | Destination -> Wire_structs.set_udp_dest_port txlayer port
+  let rewrite_port (txlayer : Cstruct.t) port =
+    Wire_structs.set_udp_dest_port txlayer port
   in
   let decrement_ttl ip_layer =
     Wire_structs.set_ipv4_ttl ip_layer 
@@ -181,8 +165,8 @@ let translate table direction frame =
               | Some (V4 new_ip, new_port) ->
                 (* TODO: we should probably refuse to pass TTL = 0 and instead send an
                    ICMP message back to the sender *)
-                rewrite_ip false ip_packet direction (V4 new_ip);
-                rewrite_port higherproto_packet direction new_port;
+                rewrite_ip false ip_packet (V4 new_ip);
+                rewrite_port higherproto_packet new_port;
                 decrement_ttl ip_packet;
                 Some frame 
               | Some (V6 new_ip, new_port) -> None (* TODO: 4-to-6 logic *)
