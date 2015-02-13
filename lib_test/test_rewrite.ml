@@ -130,7 +130,7 @@ src with xl. *)
     | Source -> add_tcp (frame, len) sport dport
   in
   let table = 
-    match Lookup.insert (Hashtbl.create 2) proto
+    match Lookup.insert (Lookup.empty ()) proto
             ((V4 src), sport) ((V4 dst), dport) ((V4 xl), xlport)
     with
     | Some t -> t
@@ -225,7 +225,7 @@ let test_udp_ipv4 context =
   let (frame, len) = basic_ipv4_frame proto src dst ttl smac_addr in
   let (frame, len) = add_udp (frame, len) 255 1024 in
   let table = 
-    match Lookup.insert (Hashtbl.create 2) 17 
+    match Lookup.insert (Lookup.empty ()) 17 
             ((V4 src), 255) ((V4 dst), 1024) ((V4 xl), 45454)
     with
     | Some t -> t
@@ -261,7 +261,7 @@ let test_udp_ipv6 context =
   let smac = Macaddr.of_string_exn "00:16:3e:c0:ff:ee" in
   let (frame, len) = basic_ipv6_frame proto interior_v6 exterior_v6 40 smac in
   let table =
-    match Lookup.insert (Hashtbl.create 2) proto 
+    match Lookup.insert (Lookup.empty ()) proto 
             ((V6 interior_v6), 255) 
             ((V6 exterior_v6), 1024) 
             ((V6 translate_v6), 45454)

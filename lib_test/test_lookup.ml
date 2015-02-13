@@ -10,7 +10,7 @@ let exterior_v6 = ((Ipaddr.of_string_exn "2a01:e35:2e8a:1e0::42:10"), 1234)
 let translate_v6 = ((Ipaddr.of_string_exn
                        "2604:3400:dc1:43:216:3eff:fe85:23c5"), 20002)
 
-let (empty_table : Lookup.table) = empty ()
+let (empty_table : Lookup.t) = empty ()
 
 let show_table_entry (proto, left, right, translate) = Printf.sprintf
     "for source rewrites, protocol %d: (%s, %d), (%s, %d) -> (%s, %d), (%s, %d)" proto 
@@ -20,7 +20,7 @@ let show_table_entry (proto, left, right, translate) = Printf.sprintf
     (Ipaddr.to_string (fst right)) (snd right)
 
 let default_table () =
-  let t = Hashtbl.create 20 in
+  let t = empty_table in
   (* TODO: don't just assume success *)
   let _ = insert t 6 interior_v4 exterior_v4 translate_v4 in
   let _ = insert t 17 interior_v6 exterior_v6 translate_v6 in

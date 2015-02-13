@@ -70,7 +70,7 @@ end
 
 type direction = Source | Destination
 type insert_result = 
-  | Ok of Lookup.table
+  | Ok of Lookup.t
   | Overlap
   | Unparseable
 

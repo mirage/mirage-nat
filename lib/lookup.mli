@@ -1,22 +1,21 @@
 type protocol = int
 type port = int
-type table = (protocol * (Ipaddr.t * port) * (Ipaddr.t * port), (Ipaddr.t *
-                                                                 port)) Hashtbl.t
+type t 
 
-val lookup : table -> protocol -> (Ipaddr.t * port) -> (Ipaddr.t * port) -> (Ipaddr.t * port) option
+val lookup : t -> protocol -> (Ipaddr.t * port) -> (Ipaddr.t * port) -> (Ipaddr.t * port) option
 
-(* TODO: users aren't going to want to maintain a table of available ports; 
+(* TODO: users aren't going to want to maintain a t of available ports; 
    will need something to manage allocation of free ports for translated IPs *)
 
-val insert : table -> protocol -> (Ipaddr.t * port) -> (Ipaddr.t * port) -> (Ipaddr.t * port) ->
-  table option
+val insert : t -> protocol -> (Ipaddr.t * port) -> (Ipaddr.t * port) -> (Ipaddr.t * port) ->
+  t option
 
-val delete : table -> protocol -> (Ipaddr.t * port) -> (Ipaddr.t * port) -> (Ipaddr.t * port ) ->
-  table
+val delete : t -> protocol -> (Ipaddr.t * port) -> (Ipaddr.t * port) -> (Ipaddr.t * port ) ->
+  t
 
-val length : table -> int
+val length : t -> int
 
 (* 
-val dump_table : table -> unit
+val dump_t : t -> unit
 *)
-val empty : unit -> table
+val empty : unit -> t
