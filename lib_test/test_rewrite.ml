@@ -27,13 +27,6 @@ let transport_and_above_of_ip ip =
     assert_failure err
 
 let basic_ipv4_frame ?(frame_size=1024) proto src dst ttl smac_addr =
-  (* copied from mirage-tcpip/lib/ipv4/allocate_frame, which unfortunately
-    requires a whole ipv4 record type as an argument in order to extract the mac
-     address from the record *)
-  (* it would be nice to pull that out into a different function so test code
-     could call allocate_frame with a Macaddr.t directly *)
-  (* need to make sure this is zeroed, which we get for free w/io_page but not
-     cstruct *)
   let ethernet_frame = zero_cstruct (Cstruct.create frame_size) in (* altered *)
   let ethernet_frame = Cstruct.set_len ethernet_frame 
       (Wire_structs.sizeof_ethernet + Wire_structs.sizeof_ipv4) in
@@ -56,8 +49,8 @@ let basic_ipv4_frame ?(frame_size=1024) proto src dst ttl smac_addr =
 let basic_ipv6_frame proto src dst ttl smac_addr =
   let ethernet_frame = zero_cstruct (Cstruct.create
                                        (Wire_structs.sizeof_ethernet +
-                                        Wire_structs.Ipv6_wire.sizeof_ipv6)) in (* altered *)
-  let smac = Macaddr.to_bytes smac_addr in (* altered *)
+                                        Wire_structs.Ipv6_wire.sizeof_ipv6)) in
+  let smac = Macaddr.to_bytes smac_addr in 
   Wire_structs.set_ethernet_src smac 0 ethernet_frame;
   Wire_structs.set_ethernet_ethertype ethernet_frame 0x86dd;
   let ip_layer = ip_and_above_of_frame ethernet_frame in
@@ -75,7 +68,7 @@ let add_tcp (frame, len) source_port dest_port =
   Wire_structs.Tcp_wire.set_tcp_src_port tcp_buf source_port;
   Wire_structs.Tcp_wire.set_tcp_dst_port tcp_buf dest_port;
   (* for now, all tcp packets have syn set & have a consistent seq # *)
-  (* they also don't have options; options are for closers *)
+  (* they also don't have options *)
   Wire_structs.Tcp_wire.set_tcp_sequence tcp_buf (Int32.of_int 0x432af310);
   Wire_structs.Tcp_wire.set_tcp_ack_number tcp_buf Int32.zero;
   Wire_structs.Tcp_wire.set_tcp_dataoff tcp_buf 5;
@@ -191,10 +184,10 @@ let test_tcp_ipv4_dst context =
 let test_tcp_ipv4_src context = 
   let ttl = 4 in
   let proto = 6 in
-  let src = (Ipaddr.V4.of_string_exn "192.168.108.26") in
-  let dst = (Ipaddr.V4.of_string_exn "4.141.2.6") in 
-  let xl = (Ipaddr.V4.of_string_exn "128.104.108.1") in
-  let sport, dport, xlport = 255,1024,45454 in
+  let src = (Ipaddr.V4.of_string_exn "10.231.50.254") in
+  let dst = (Ipaddr.V4.of_string_exn "215.231.0.1") in 
+  let xl = (Ipaddr.V4.of_string_exn "4.4.4.4") in
+  let sport, dport, xlport = 40192,1024,45454 in
   let frame, table = basic_tcpv4 Source proto ttl src dst xl sport dport xlport in
   test_ipv4_rewriting src dst proto ttl frame;
   (* make sure things are set right in initial frame *)
