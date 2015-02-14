@@ -10,8 +10,6 @@ let exterior_v6 = ((Ipaddr.of_string_exn "2a01:e35:2e8a:1e0::42:10"), 1234)
 let translate_v6 = ((Ipaddr.of_string_exn
                        "2604:3400:dc1:43:216:3eff:fe85:23c5"), 20002)
 
-let (empty_table : Lookup.t) = empty ()
-
 let show_table_entry (proto, left, right, translate) = Printf.sprintf
     "for source rewrites, protocol %d: (%s, %d), (%s, %d) -> (%s, %d), (%s, %d)" proto 
     (Ipaddr.to_string (fst left)) (snd left)
@@ -20,10 +18,14 @@ let show_table_entry (proto, left, right, translate) = Printf.sprintf
     (Ipaddr.to_string (fst right)) (snd right)
 
 let default_table () =
-  let t = empty_table in
-  (* TODO: don't just assume success *)
-  let _ = insert t 6 interior_v4 exterior_v4 translate_v4 in
-  let _ = insert t 17 interior_v6 exterior_v6 translate_v6 in
+  let or_error fn = 
+    match fn with
+    | Some r -> r
+    | None -> assert_failure "Couldn't construct test NAT table"
+  in
+  let t = Lookup.empty () in
+  let t = or_error (insert t 6 interior_v4 exterior_v4 translate_v4) in
+  let t = or_error (insert t 17 interior_v6 exterior_v6 translate_v6) in
   t
 
 let basic_lookup context =
@@ -42,6 +44,7 @@ let basic_lookup context =
     (lookup t 6 ((Ipaddr.of_string_exn "8.8.8.8"), 6000) exterior_v4) None;
   assert_equal 
     (lookup t 6 ((Ipaddr.of_string_exn "0.0.0.0"), 6000) exterior_v4) None
+
 (* TODO: with an empty table, any randomized check does not succeed *)
 (* (todo: generator of random ips/ports) *)
 
@@ -59,7 +62,6 @@ let crud context =
      test that nothing's there" *)
   let prop_cruds_as_expected input (* where input is a list of random proto ->
                                       ip,port -> ip,port *) =
-    let h = empty () in
     let mem_bidirectional table protocol left right translate =
       let src_rewrite = lookup table protocol left right in
       let dst_rewrite = lookup table protocol right translate in
@@ -67,26 +69,45 @@ let crud context =
       | Some translate, Some left -> true 
       | None, _ | _, None -> false
     in
-    (* add randomly generated data to the map *)
-    ignore (List.map (fun (protocol, left, right, translate) -> 
-        insert h protocol left right translate) input); 
-    (* see whether it's all there as expected *)
-    let all_there = List.fold_left (fun continue (protocol, left, right,
-                                                  translate) -> 
-                                     match continue with
-          | true -> mem_bidirectional h protocol left right translate
-          | false -> false
-        ) true input
+    (* add all randomly generated items to the table *)
+    let add_all h entries =
+      List.map (fun (protocol, left, right, translate) -> 
+          insert h protocol left right translate) entries
     in
-    all_there (* TODO: deletes *)
+    (* see whether it's all there as expected *)
+    let all_there h entries = 
+      List.fold_left (fun continue (protocol, left, right, translate) -> 
+          match continue with
+          | true -> mem_bidirectional h protocol left right translate
+          | false -> false) 
+        true entries
+    in
+    let remove_all h entries = 
+      List.map (fun (protocol, left, right, translate) -> 
+          delete h protocol left right translate) entries
+    in
+    let none_there h entries = 
+      match entries with
+      | [] -> true
+      | _ -> not (all_there h entries) in
+    let adds t entries = 
+      add_all t entries;
+      all_there t entries 
+    in
+    let deletes t entries =
+      remove_all t entries;
+      none_there t entries
+    in
+    let t = empty () in
+    (adds t input) && (deletes t input)
   in
   let arbitrary_table_entry_list =
     QC.arbitrary_list Arbitrary.arbitrary_table_entry
   in
   let testable_entries_to_boolean = QC.quickCheck (QC.testable_fun
-                                          arbitrary_table_entry_list
-                                          (QC.show_list show_table_entry)
-                                          QC.testable_bool)
+                                                     arbitrary_table_entry_list
+                                                     (QC.show_list show_table_entry)
+                                                     QC.testable_bool)
   in
   let result = testable_entries_to_boolean prop_cruds_as_expected in
   assert_equal ~printer:Arbitrary.qc_printer QC.Success result
