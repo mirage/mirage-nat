@@ -50,9 +50,10 @@ let delete table proto (left_ip, left_port) (right_ip, right_port)
                                                           translate_port)) in
   (* TODO: this is subject to race conditions *)
   (* needs Lwt.join *)
+  (* TODO: under what circumstances does this return None? *)
   Hashtbl.remove table internal_lookup;
   Hashtbl.remove table external_lookup;
-  table
+  Some table
 
 (* TODO: if we do continue with this structure, this number should almost
   certainly be bigger *)

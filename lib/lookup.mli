@@ -8,7 +8,7 @@ val insert : t -> protocol -> (Ipaddr.t * port) -> (Ipaddr.t * port) -> (Ipaddr.
   t option
 
 val delete : t -> protocol -> (Ipaddr.t * port) -> (Ipaddr.t * port) -> (Ipaddr.t * port ) ->
-  t
+  t option
 
 val string_of_t : t -> string
 

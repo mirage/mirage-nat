@@ -46,7 +46,6 @@ let basic_lookup context =
     (lookup t 6 ((Ipaddr.of_string_exn "0.0.0.0"), 6000) exterior_v4) None
 
 (* TODO: with an empty table, any randomized check does not succeed *)
-(* (todo: generator of random ips/ports) *)
 
 let crud context =
   let module QC = QuickCheck in
@@ -69,11 +68,20 @@ let crud context =
       | Some translate, Some left -> true 
       | None, _ | _, None -> false
     in
-    (* add all randomly generated items to the table *)
-    let add_all h entries =
-      List.map (fun (protocol, left, right, translate) -> 
-          insert h protocol left right translate) entries
+    (* add or delete a list of entries and return the populated/depopulated
+       table *)
+    let for_all h entries fn =
+      List.fold_left (
+        fun h (protocol, left, right, translate) -> (
+          match fn h protocol left right translate with
+          | None ->
+            let str = show_table_entry (protocol, left, right, translate) in
+            assert_failure (Printf.sprintf "Couldn't work with %s" str)
+          | Some t -> t
+          )) h entries
     in
+    let add_all h entries = for_all h entries insert in
+    let remove_all h entries = for_all h entries delete in
     (* see whether it's all there as expected *)
     let all_there h entries = 
       List.fold_left (fun continue (protocol, left, right, translate) -> 
@@ -82,24 +90,23 @@ let crud context =
           | false -> false) 
         true entries
     in
-    let remove_all h entries = 
-      List.map (fun (protocol, left, right, translate) -> 
-          delete h protocol left right translate) entries
-    in
     let none_there h entries = 
       match entries with
       | [] -> true
-      | _ -> not (all_there h entries) in
+      | _ -> not (all_there h entries) 
+    in
     let adds t entries = 
-      add_all t entries;
-      all_there t entries 
+      let t = add_all t entries in
+      (t, all_there t entries)
     in
     let deletes t entries =
-      remove_all t entries;
-      none_there t entries
+      let t = remove_all t entries in
+      (t, none_there t entries)
     in
     let t = empty () in
-    (adds t input) && (deletes t input)
+    let added, add_result = adds t input in
+    let deleted, delete_result = deletes added input in
+    add_result && delete_result
   in
   let arbitrary_table_entry_list =
     QC.arbitrary_list Arbitrary.arbitrary_table_entry
