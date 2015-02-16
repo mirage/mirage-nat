@@ -1,3 +1,5 @@
+open Ipaddr
+
 (* this is temporary -- waiting on merge of nojb's pr for cstruct in ipaddr,
  * see https://github.com/mirage/ocaml-ipaddr/pull/36 
  * unfortunately tcpip/lib/ipv6.ml is in this position as well *)
@@ -70,7 +72,7 @@ end
 
 type direction = Source | Destination
 type insert_result = 
-  | Ok of Lookup.table
+  | Ok of Lookup.t
   | Overlap
   | Unparseable
 
@@ -136,35 +138,15 @@ let translate table direction frame =
       ((Wire_structs.get_ipv4_ttl ip_layer) - 1)
   in
   (* TODO: this is not correct for IPv6 *)
+  (* TODO: it's not clear to me whether we need to do this, since most users
+    will be sending packets via IP.write, which itself calculates and inserts
+    the proper checksum before sending the packet. *)
   let recalculate_ip_checksum ip_layer =
-    (* set the checksum to 0 before recalculating *)
     Wire_structs.set_ipv4_csum ip_layer 0;
     let just_ipv4 = Cstruct.sub ip_layer 0 (Wire_structs.sizeof_ipv4) in
     let new_csum = Tcpip_checksum.ones_complement just_ipv4 in
     Wire_structs.set_ipv4_csum ip_layer new_csum
   in
-  let recalculate_udp_checksum frame udp_layer =
-    (* set the checksum to 0 before recalculating *)
-    (* TODO I'm pretty sure I see the problem --  we should call with ethernet
-      level frame and then a list consisting of udp_header :: payload *)
-    Wire_structs.set_udp_checksum udp_layer 0;
-    let cs = checksum frame
-        (udp_layer ::
-         (Cstruct.shift udp_layer (Wire_structs.sizeof_udp)) :: [] )
-    in
-    Wire_structs.set_udp_checksum udp_layer cs
-  in
-  let recalculate_tcp_checksum frame tcp_layer =
-    (* set checksum to 0 *)
-    (* TODO: these shifts don't work if options are set *)
-    Wire_structs.Tcp_wire.set_tcp_checksum tcp_layer 0;
-    let cs = checksum frame (tcp_layer :: (Cstruct.shift tcp_layer
-                                             Wire_structs.Tcp_wire.sizeof_tcp)
-                             :: [])
-    in
-    Wire_structs.Tcp_wire.set_tcp_checksum tcp_layer cs
-  in
-  let ip_type = Wire_structs.get_ethernet_ethertype frame in
   let ip_packet = Cstruct.shift frame Wire_structs.sizeof_ethernet in
   match (retrieve_ips frame) with
   | Some (V4 src, V4 dst) -> (* ipv4 *) (
@@ -184,6 +166,7 @@ let translate table direction frame =
                 rewrite_ip false ip_packet direction (V4 new_ip);
                 rewrite_port higherproto_packet direction new_port;
                 decrement_ttl ip_packet;
+                recalculate_ip_checksum ip_packet;
                 Some frame 
               | Some (V6 new_ip, new_port) -> None (* TODO: 4-to-6 logic *)
               | None -> None (* don't autocreate new entries *)

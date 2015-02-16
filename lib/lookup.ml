@@ -8,22 +8,17 @@ straight from the struct, so we'll do that too although we
 *)
 type protocol = int
 type port = int (* TODO: should probably formalize that this is uint16 *)
-type table = (protocol * (Ipaddr.t * port) * (Ipaddr.t * port), (Ipaddr.t * port)) Hashtbl.t
+type t = (protocol * (Ipaddr.t * port) * (Ipaddr.t * port), (Ipaddr.t * port)) Hashtbl.t
 
-(* 
-let dump_table (table : table) =
+let string_of_t (table : t) =
   let print_pair (addr, port) =
     Printf.sprintf "addr %s , port %d (%x) " (Ipaddr.to_string addr) port port
   in
-  Hashtbl.iter (
-    fun (proto, left, right) answer -> 
-      Printf.printf "proto %d (%x): %s, %s -> %s\n" 
+  Hashtbl.fold (
+    fun (proto, left, right) answer str -> 
+      Printf.sprintf "%s proto %d (%x): %s, %s -> %s\n" str
         proto proto (print_pair left) (print_pair right) (print_pair answer)
-  ) table
-*)
-
-(* this is really only useful for debugging *)
-let length table = Hashtbl.length table
+  ) table ""
 
 let lookup table proto left right =
   match Hashtbl.mem table (proto, left, right) with
@@ -55,9 +50,10 @@ let delete table proto (left_ip, left_port) (right_ip, right_port)
                                                           translate_port)) in
   (* TODO: this is subject to race conditions *)
   (* needs Lwt.join *)
+  (* TODO: under what circumstances does this return None? *)
   Hashtbl.remove table internal_lookup;
   Hashtbl.remove table external_lookup;
-  table
+  Some table
 
 (* TODO: if we do continue with this structure, this number should almost
   certainly be bigger *)
