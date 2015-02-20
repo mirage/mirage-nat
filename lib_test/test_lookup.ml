@@ -1,5 +1,5 @@
 open OUnit2
-open Lookup
+open Nat_lookup
 
 let interior_v4 = ((Ipaddr.of_string_exn "1.2.3.4"), 6000)
 let exterior_v4 = ((Ipaddr.of_string_exn "192.168.3.11"), 80)
@@ -11,38 +11,38 @@ let translate_v6 = ((Ipaddr.of_string_exn
                        "2604:3400:dc1:43:216:3eff:fe85:23c5"), 20002)
 
 let show_table_entry (proto, left, right, translate) = Printf.sprintf
-    "for source rewrites, protocol %d: (%s, %d), (%s, %d) -> (%s, %d), (%s, %d)" proto 
+    "for source rewrites, protocol %d: (%s, %d), (%s, %d) -> (%s, %d), (%s, %d)" proto
     (Ipaddr.to_string (fst left)) (snd left)
     (Ipaddr.to_string (fst right)) (snd right)
     (Ipaddr.to_string (fst translate)) (snd translate)
     (Ipaddr.to_string (fst right)) (snd right)
 
 let default_table () =
-  let or_error fn = 
+  let or_error fn =
     match fn with
     | Some r -> r
     | None -> assert_failure "Couldn't construct test NAT table"
   in
-  let t = Lookup.empty () in
+  let t = Nat_lookup.empty () in
   let t = or_error (insert t 6 interior_v4 exterior_v4 translate_v4) in
   let t = or_error (insert t 17 interior_v6 exterior_v6 translate_v6) in
   t
 
 let basic_lookup context =
   let t = default_table () in
-  assert_equal 
+  assert_equal
     (lookup t 6 interior_v4 exterior_v4) (Some translate_v4);
-  assert_equal 
+  assert_equal
     (lookup t 6 exterior_v4 translate_v4) (Some interior_v4);
-  assert_equal 
+  assert_equal
     (lookup t 17 interior_v6 exterior_v6) (Some translate_v6);
-  assert_equal 
+  assert_equal
     (lookup t 17 exterior_v6 translate_v6) (Some interior_v6);
-  assert_equal 
+  assert_equal
     (lookup t 4 interior_v4 exterior_v4) None;
-  assert_equal 
+  assert_equal
     (lookup t 6 ((Ipaddr.of_string_exn "8.8.8.8"), 6000) exterior_v4) None;
-  assert_equal 
+  assert_equal
     (lookup t 6 ((Ipaddr.of_string_exn "0.0.0.0"), 6000) exterior_v4) None
 
 (* TODO: with an empty table, any randomized check does not succeed *)
@@ -52,12 +52,12 @@ let crud context =
   (* create, update, delete work as expected *)
   (* propositions: inserting then looking up results in input being found;
      deleting then looking up results in input not being found *)
-  (* ideally we'd do this as 
-     "make an empty table, 
-     insert a batch of random things, 
+  (* ideally we'd do this as
+     "make an empty table,
+     insert a batch of random things,
      test that they're all there and correct,
-     delete all of them, 
-     test that they're not there, 
+     delete all of them,
+     test that they're not there,
      test that nothing's there" *)
   let prop_cruds_as_expected input (* where input is a list of random proto ->
                                       ip,port -> ip,port *) =
@@ -65,7 +65,7 @@ let crud context =
       let src_rewrite = lookup table protocol left right in
       let dst_rewrite = lookup table protocol right translate in
       match src_rewrite, dst_rewrite with
-      | Some translate, Some left -> true 
+      | Some translate, Some left -> true
       | None, _ | _, None -> false
     in
     (* add or delete a list of entries and return the populated/depopulated
@@ -83,19 +83,19 @@ let crud context =
     let add_all h entries = for_all h entries insert in
     let remove_all h entries = for_all h entries delete in
     (* see whether it's all there as expected *)
-    let all_there h entries = 
-      List.fold_left (fun continue (protocol, left, right, translate) -> 
+    let all_there h entries =
+      List.fold_left (fun continue (protocol, left, right, translate) ->
           match continue with
           | true -> mem_bidirectional h protocol left right translate
-          | false -> false) 
+          | false -> false)
         true entries
     in
-    let none_there h entries = 
+    let none_there h entries =
       match entries with
       | [] -> true
-      | _ -> not (all_there h entries) 
+      | _ -> not (all_there h entries)
     in
-    let adds t entries = 
+    let adds t entries =
       let t = add_all t entries in
       (t, all_there t entries)
     in
@@ -132,11 +132,11 @@ let uniqueness context =
   (* two sources mapped to same dst/xl can't be disambiguated, so these should
      produce None *)
   try_bad_insert 6 ((Ipaddr.of_string_exn "192.168.3.29"), 12021) exterior_v4
-    translate_v4; 
+    translate_v4;
   try_bad_insert 17 ((Ipaddr.of_string_exn "10.1.2.4"), 6667) exterior_v6
     translate_v6
 
-let suite = "test-lookup" >::: 
+let suite = "test-lookup" >:::
   [
     "basic lookups work" >:: basic_lookup;
     "crud" >:: crud;

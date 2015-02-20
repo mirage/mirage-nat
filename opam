@@ -3,13 +3,21 @@ name: "ocaml-nat"
 version: "0.1"
 maintainer: "Mindy Preston <meetup@yomimono.org>"
 authors: "Mindy Preston <meetup@yomimono.org>"
-homepage: ""
-bug-reports: ""
-license: ""
+homepage: "https://github.com/yomimono/ocaml-nat"
+bug-reports: "https://github.com/yomimono/ocaml-nat/issues/"
+dev-repo: "https://github.com/yomimono/ocaml-nat.git"
+license: "ISC"
+
 build: [
-  ["./configure" "--prefix=%{prefix}%"]
+  ["./configure" "--prefix=%{prefix}%" "--%{arbitrary-network:enable}%-tests"]
   [make]
 ]
+build-test: [make "test"]
 install: [make "install"]
 remove: ["ocamlfind" "remove" "mirage_nat"]
-depends: "ocamlfind" {build}
+depends: [
+  "ocamlfind" {build}
+  "ipaddr"
+  "tcpip"
+  "arbitrary-test" {test}
+]

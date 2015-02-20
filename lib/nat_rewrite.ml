@@ -1,7 +1,7 @@
 open Ipaddr
 
 (* this is temporary -- waiting on merge of nojb's pr for cstruct in ipaddr,
- * see https://github.com/mirage/ocaml-ipaddr/pull/36 
+ * see https://github.com/mirage/ocaml-ipaddr/pull/36
  * unfortunately tcpip/lib/ipv6.ml is in this position as well *)
 module V4 = struct
   type t = Ipaddr.V4.t
@@ -17,7 +17,7 @@ module V4 = struct
 
   (* Cstruct conversion *)
   let of_cstruct_raw cs o =
-    make 
+    make
       (Char.code (Cstruct.get_char cs (0 + o)))
       (Char.code (Cstruct.get_char cs (1 + o)))
       (Char.code (Cstruct.get_char cs (2 + o)))
@@ -71,8 +71,8 @@ module V6 = struct
 end
 
 type direction = Source | Destination
-type insert_result = 
-  | Ok of Lookup.t
+type insert_result =
+  | Ok of Nat_lookup.t
   | Overlap
   | Unparseable
 
@@ -89,30 +89,30 @@ let checksum =
 
 (* TODO: it's not clear where this function should be, but it probably shouldn't
    be here in the long run. *)
-let retrieve_ips frame = 
+let retrieve_ips frame =
   let ip_type = Wire_structs.get_ethernet_ethertype frame in
   let ip_packet = Cstruct.shift frame Wire_structs.sizeof_ethernet in
   match ip_type with
-  | 0x0800 -> (* ipv4 *) 
-    Some 
-    (Ipaddr.V4 (Ipaddr.V4.of_int32 (Wire_structs.get_ipv4_src ip_packet)), 
+  | 0x0800 -> (* ipv4 *)
+    Some
+    (Ipaddr.V4 (Ipaddr.V4.of_int32 (Wire_structs.get_ipv4_src ip_packet)),
      Ipaddr.V4 (Ipaddr.V4.of_int32 (Wire_structs.get_ipv4_dst ip_packet)))
   | 0x86dd -> (* ipv6 *)
-    Some 
-    (Ipaddr.V6 (V6.of_cstruct_exn (Wire_structs.Ipv6_wire.get_ipv6_src ip_packet)), 
+    Some
+    (Ipaddr.V6 (V6.of_cstruct_exn (Wire_structs.Ipv6_wire.get_ipv6_src ip_packet)),
      Ipaddr.V6 (V6.of_cstruct_exn (Wire_structs.Ipv6_wire.get_ipv6_dst ip_packet)))
   | _ -> None
 
-let retrieve_ports tx_layer = 
+let retrieve_ports tx_layer =
   (* Cstruct.uint16, Cstruct.uint16 *)
   if (Cstruct.len tx_layer < (Wire_structs.sizeof_udp)) then None else Some
-  ((Wire_structs.get_udp_source_port tx_layer : int), 
+  ((Wire_structs.get_udp_source_port tx_layer : int),
    (Wire_structs.get_udp_dest_port tx_layer : int))
 
 let translate table direction frame =
   (* note that ethif.input doesn't have the same register-listeners-then-input
      format that tcp/udp do, so we could use it for the outer layer of parsing *)
-  let ip_size is_ipv6 = match is_ipv6 with 
+  let ip_size is_ipv6 = match is_ipv6 with
     | false -> Wire_structs.sizeof_ipv4
     | true -> Wire_structs.Ipv6_wire.sizeof_ipv6
   in
@@ -121,7 +121,7 @@ let translate table direction frame =
   (* also, TODO all of the 6-to-4/4-to-6 thoughts and code.  nbd. *)
   let rewrite_ip is_ipv6 (packet : Cstruct.t) direction i =
     match (is_ipv6, direction, i) with
-    | false, Source, Ipaddr.V4 new_ip -> 
+    | false, Source, Ipaddr.V4 new_ip ->
       Wire_structs.set_ipv4_src packet (Ipaddr.V4.to_int32 new_ip)
     | false, Destination, Ipaddr.V4 new_ip ->
       Wire_structs.set_ipv4_dst packet (Ipaddr.V4.to_int32 new_ip)
@@ -134,7 +134,7 @@ let translate table direction frame =
     | Destination -> Wire_structs.set_udp_dest_port txlayer port
   in
   let decrement_ttl ip_layer =
-    Wire_structs.set_ipv4_ttl ip_layer 
+    Wire_structs.set_ipv4_ttl ip_layer
       ((Wire_structs.get_ipv4_ttl ip_layer) - 1)
   in
   (* TODO: this is not correct for IPv6 *)
@@ -157,9 +157,9 @@ let translate table direction frame =
           match retrieve_ports higherproto_packet with
           | Some (sport, dport) -> (
             (* got everything; do the lookup *)
-            let result = Lookup.lookup table proto ((V4 src), sport) ((V4 dst), dport)
+            let result = Nat_lookup.lookup table proto ((V4 src), sport) ((V4 dst), dport)
             in
-            match result with 
+            match result with
               | Some (V4 new_ip, new_port) ->
                 (* TODO: we should probably refuse to pass TTL = 0 and instead send an
                    ICMP message back to the sender *)
@@ -167,7 +167,7 @@ let translate table direction frame =
                 rewrite_port higherproto_packet direction new_port;
                 decrement_ttl ip_packet;
                 recalculate_ip_checksum ip_packet;
-                Some frame 
+                Some frame
               | Some (V6 new_ip, new_port) -> None (* TODO: 4-to-6 logic *)
               | None -> None (* don't autocreate new entries *)
             )
@@ -181,10 +181,10 @@ let translate table direction frame =
 let make_entry table frame xl_ip xl_port =
   (* basic sanity check; nothing smaller than this will be nat-able *)
   if (Cstruct.len frame) < (Wire_structs.sizeof_ethernet +
-                          Wire_structs.sizeof_ipv4 + Wire_structs.sizeof_udp) 
-  then 
+                          Wire_structs.sizeof_ipv4 + Wire_structs.sizeof_udp)
+  then
     Unparseable
-  else 
+  else
     let ip_layer = Cstruct.shift frame (Wire_structs.sizeof_ethernet) in
     let tx_layer = Cstruct.shift ip_layer (Wire_structs.sizeof_ipv4) in
     let proto = Wire_structs.get_ipv4_proto ip_layer in
@@ -198,10 +198,10 @@ let make_entry table frame xl_ip xl_port =
         (* only Organization and Global scope IPs get routed *)
         match check_scope src, check_scope dst with
         | true, true -> (
-            match Lookup.insert table proto (src, sport) (dst, dport) (xl_ip, xl_port)
+            match Nat_lookup.insert table proto (src, sport) (dst, dport) (xl_ip, xl_port)
             with
             | Some t -> Ok t
-            | None -> Overlap 
+            | None -> Overlap
           )
         | _, _ -> Unparseable
       end
