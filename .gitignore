@@ -1,13 +1,6 @@
-Makefile
-lib/META
 *.byte
-setup.*
+setup.data
 opam/
-myocamlbuild.ml
 log/
-*.mllib
-*.mldylib
 _build
-_tags
-configure
 *.swp
