@@ -9,13 +9,15 @@ dev-repo: "https://github.com/yomimono/ocaml-nat.git"
 license: "ISC"
 
 build: [
-  ["./configure" "--prefix=%{prefix}%"]
+  ["./configure" "--prefix=%{prefix}%" "--%{arbitrary-network:enable}%-tests"]
   [make]
 ]
+build-test: [make "test"]
 install: [make "install"]
 remove: ["ocamlfind" "remove" "mirage_nat"]
 depends: [
   "ocamlfind" {build}
   "ipaddr"
   "tcpip"
+  "arbitrary-test" {test}
 ]
