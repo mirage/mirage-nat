@@ -109,29 +109,95 @@ let retrieve_ports tx_layer =
   ((Wire_structs.get_udp_source_port tx_layer : int),
    (Wire_structs.get_udp_dest_port tx_layer : int))
 
+let ip_and_above_of_frame frame =
+  let minimal_size = function
+    | 0x0800 -> Wire_structs.sizeof_ipv4 + Wire_structs.sizeof_ethernet
+    | 0x86dd -> Wire_structs.Ipv6_wire.sizeof_ipv6 +
+                Wire_structs.sizeof_ethernet
+    | _ -> raise (Invalid_argument "minimal_size called with unknown ethertype")
+  in
+  let ethertype = (Wire_structs.get_ethernet_ethertype frame) in
+  match ethertype with
+  | 0x0800 | 0x86dd ->
+    if (Cstruct.len frame) < (minimal_size ethertype) then None
+    else Some (Cstruct.shift frame Wire_structs.sizeof_ethernet)
+  | _ -> None
+
+let transport_and_above_of_ip ip =
+  let hlen_version = Wire_structs.get_ipv4_hlen_version ip in
+  match ((hlen_version land 0xf0) lsr 4) with
+  | 4 -> (* length (in words, not bytes) is in the other half of hlen_version *)
+    Some (Cstruct.shift ip ((hlen_version land 0x0f) * 4))
+  | 6 -> (* ipv6 is a constant length *)
+    Some ( Cstruct.shift ip Wire_structs.Ipv6_wire.sizeof_ipv6)
+  | n -> None
+
+let proto_of_frame frame =
+  match ip_and_above_of_frame frame with
+  | None -> None
+  | Some ip_layer -> Some (Wire_structs.get_ipv4_proto ip_layer)
+
+let ips_of_frame frame =
+  let ip_type = Wire_structs.get_ethernet_ethertype frame in
+  let ip_packet = Cstruct.shift frame Wire_structs.sizeof_ethernet in
+  match ip_type with
+  | 0x0800 -> (* ipv4 *)
+    if (Cstruct.len ip_packet) < (Wire_structs.sizeof_ipv4) then None else
+    Some
+    (Ipaddr.V4 (Ipaddr.V4.of_int32 (Wire_structs.get_ipv4_src ip_packet)),
+     Ipaddr.V4 (Ipaddr.V4.of_int32 (Wire_structs.get_ipv4_dst ip_packet)))
+  | 0x86dd -> (* ipv6 *)
+    Some
+    (Ipaddr.V6 (V6.of_cstruct_exn (Wire_structs.Ipv6_wire.get_ipv6_src ip_packet)),
+     Ipaddr.V6 (V6.of_cstruct_exn (Wire_structs.Ipv6_wire.get_ipv6_dst ip_packet)))
+  | _ -> None
+
+let ports_of_frame frame =
+  match ip_and_above_of_frame frame with
+  | None -> None
+  | Some ip_layer ->
+    match transport_and_above_of_ip ip_layer with
+    | None -> None
+    | Some tx_layer ->
+      if (Cstruct.len tx_layer < (Wire_structs.sizeof_udp)) then None else Some
+          ((Wire_structs.get_udp_source_port tx_layer : int),
+           (Wire_structs.get_udp_dest_port tx_layer : int))
+
+let layers frame =
+  let bind f x y =
+    match (f x) with
+    | None -> None
+    | Some q -> y q
+  in
+  match (ip_and_above_of_frame frame,
+         bind ip_and_above_of_frame frame
+           transport_and_above_of_ip) with
+  | Some ip, Some tx -> Some (frame, ip, tx)
+  | _, _ -> None
+
+let rewrite_ip is_ipv6 (ip_layer : Cstruct.t) direction i =
+  (* TODO: this is not the right set of parameters for a function that might
+     have to do 6-to-4 translation *)
+  (* also, TODO all of the 6-to-4/4-to-6 thoughts and code.  nbd. *)
+  match (is_ipv6, direction, i) with
+  | false, Source, (V4 new_ip) ->
+    Wire_structs.set_ipv4_src ip_layer (Ipaddr.V4.to_int32 new_ip)
+  | false, Destination, (V4 new_ip) ->
+    Wire_structs.set_ipv4_dst ip_layer (Ipaddr.V4.to_int32 new_ip)
+  (* TODO: every other case *)
+  | _, _, _ -> raise (Failure "ipv4-ipv4 is the only implemented case")
+
+let rewrite_port (txlayer : Cstruct.t) direction port =
+  match direction with
+  | Source -> Wire_structs.set_udp_source_port txlayer port
+  | Destination -> Wire_structs.set_udp_dest_port txlayer port
+
 let translate table direction frame =
   (* note that ethif.input doesn't have the same register-listeners-then-input
      format that tcp/udp do, so we could use it for the outer layer of parsing *)
   let ip_size is_ipv6 = match is_ipv6 with
     | false -> Wire_structs.sizeof_ipv4
     | true -> Wire_structs.Ipv6_wire.sizeof_ipv6
-  in
-  (* TODO: this is not the right set of parameters for a function that might
-     have to do 6-to-4 translation *)
-  (* also, TODO all of the 6-to-4/4-to-6 thoughts and code.  nbd. *)
-  let rewrite_ip is_ipv6 (packet : Cstruct.t) direction i =
-    match (is_ipv6, direction, i) with
-    | false, Source, Ipaddr.V4 new_ip ->
-      Wire_structs.set_ipv4_src packet (Ipaddr.V4.to_int32 new_ip)
-    | false, Destination, Ipaddr.V4 new_ip ->
-      Wire_structs.set_ipv4_dst packet (Ipaddr.V4.to_int32 new_ip)
-    (* TODO: every other case *)
-    | _, _, _ -> raise (Failure "ipv4-ipv4 is the only implemented case")
-  in
-  let rewrite_port (txlayer : Cstruct.t) direction port =
-    match direction with
-    | Source -> Wire_structs.set_udp_source_port txlayer port
-    | Destination -> Wire_structs.set_udp_dest_port txlayer port
   in
   let decrement_ttl ip_layer =
     Wire_structs.set_ipv4_ttl ip_layer

@@ -21,3 +21,24 @@ val translate : Nat_lookup.t -> direction -> Cstruct.t -> Cstruct.t option
   * if insertion succeeded, return the new table;
   * otherwise, return an error type indicating the problem. *)
 val make_entry : Nat_lookup.t -> Cstruct.t -> Ipaddr.t -> int -> insert_result
+
+(* given an ethernet-and-above frame, fish out the src and dst ip *)
+val ips_of_frame : Cstruct.t -> (Ipaddr.t * Ipaddr.t) option
+
+(* given an ethernet-and-above frame, fish out the transport-layer protocol *)
+val proto_of_frame : Cstruct.t -> int option
+
+(* given an ethernet-and-above frame, fish out the transport-layer source and
+   destination ports *)
+val ports_of_frame : Cstruct.t -> (int * int) option
+
+(* attempt to decompose a frame into Cstructs representing the ethernet, ip, and
+  tx layers.  each cstruct maintains a view into those above it (i.e., the
+   ethernet cstruct's length is not set to the length of the ethernet header).
+*)
+val layers : Cstruct.t -> (Cstruct.t * Cstruct.t * Cstruct.t) option
+
+(* support for direct rewriting of packets *)
+val rewrite_ip : bool -> Cstruct.t -> direction -> Ipaddr.t -> unit
+
+val rewrite_port : Cstruct.t -> direction -> int -> unit
