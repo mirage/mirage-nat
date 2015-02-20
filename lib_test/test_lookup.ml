@@ -1,5 +1,5 @@
 open OUnit2
-open Lookup
+open Nat_lookup
 
 let interior_v4 = ((Ipaddr.of_string_exn "1.2.3.4"), 6000)
 let exterior_v4 = ((Ipaddr.of_string_exn "192.168.3.11"), 80)
@@ -23,7 +23,7 @@ let default_table () =
     | Some r -> r
     | None -> assert_failure "Couldn't construct test NAT table"
   in
-  let t = Lookup.empty () in
+  let t = Nat_lookup.empty () in
   let t = or_error (insert t 6 interior_v4 exterior_v4 translate_v4) in
   let t = or_error (insert t 17 interior_v6 exterior_v6 translate_v6) in
   t

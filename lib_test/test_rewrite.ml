@@ -1,6 +1,6 @@
 open OUnit2
 open Ipaddr
-open Rewrite
+open Nat_rewrite
 
 let zero_cstruct cs =
   let zero c = Cstruct.set_char c 0 '\000' in
@@ -107,7 +107,7 @@ let test_ipv4_rewriting exp_src exp_dst exp_proto exp_ttl xl_frame =
 
   (* don't do checksum checking for now *)
 
-let basic_tcpv4 (direction : Rewrite.direction) proto ttl src dst xl sport dport xlport =
+let basic_tcpv4 (direction : Nat_rewrite.direction) proto ttl src dst xl sport dport xlport =
   let smac_addr = Macaddr.of_string_exn "00:16:3e:ff:00:ff" in
   let (frame, len) =
     match direction with
@@ -136,7 +136,7 @@ let basic_tcpv4 (direction : Rewrite.direction) proto ttl src dst xl sport dport
     | Source -> add_tcp (frame, len) sport dport
   in
   let table =
-    match Lookup.insert (Lookup.empty ()) proto
+    match Nat_lookup.insert (Nat_lookup.empty ()) proto
             ((V4 src), sport) ((V4 dst), dport) ((V4 xl), xlport)
     with
     | Some t -> t
@@ -157,7 +157,7 @@ let test_tcp_ipv4_dst context =
     * 128.104.108.1 (xl) rewritten to 192.168.108.26 (src) *)
   test_ipv4_rewriting dst xl proto (ttl) frame;
 
-  let translated_frame = Rewrite.translate table Destination frame in
+  let translated_frame = Nat_rewrite.translate table Destination frame in
   match translated_frame with
   | None -> assert_failure "Expected translateable frame wasn't rewritten"
   | Some xl_frame ->
@@ -194,7 +194,7 @@ let test_tcp_ipv4_src context =
   assert_equal ~printer:string_of_int dport
     (Wire_structs.Tcp_wire.get_tcp_dst_port (transport_and_above_of_ip
                                                (ip_and_above_of_frame frame)));
-  let translated_frame = Rewrite.translate table Source frame in
+  let translated_frame = Nat_rewrite.translate table Source frame in
     match translated_frame with
     | None -> assert_failure "Expected translateable frame wasn't rewritten"
     | Some xl_frame ->
@@ -232,13 +232,13 @@ let test_udp_ipv4 context =
   let (frame, len) = basic_ipv4_frame proto src dst ttl smac_addr in
   let (frame, len) = add_udp (frame, len) 255 1024 in
   let table =
-    match Lookup.insert (Lookup.empty ()) 17
+    match Nat_lookup.insert (Nat_lookup.empty ()) 17
             ((V4 src), 255) ((V4 dst), 1024) ((V4 xl), 45454)
     with
     | Some t -> t
     | None -> assert_failure "Failed to insert test data into table structure"
   in
-  let translated_frame = Rewrite.translate table Destination frame in
+  let translated_frame = Nat_rewrite.translate table Destination frame in
   match translated_frame with
   | None -> assert_failure "Expected translateable frame wasn't rewritten"
   | Some xl_frame ->
@@ -269,7 +269,7 @@ let test_udp_ipv6 context =
   let smac = Macaddr.of_string_exn "00:16:3e:c0:ff:ee" in
   let (frame, len) = basic_ipv6_frame proto interior_v6 exterior_v6 40 smac in
   let table =
-    match Lookup.insert (Lookup.empty ()) proto
+    match Nat_lookup.insert (Nat_lookup.empty ()) proto
             ((V6 interior_v6), 255)
             ((V6 exterior_v6), 1024)
             ((V6 translate_v6), 45454)
@@ -277,7 +277,7 @@ let test_udp_ipv6 context =
     | Some t -> t
     | None -> assert_failure "Failed to insert test data into table structure"
   in
-  match Rewrite.translate table Destination frame with
+  match Nat_rewrite.translate table Destination frame with
   | None -> todo "Couldn't translate an IPv6 UDP frame"
   | Some xl_frame -> todo "Sanity checks for IPv6 UDP frame translation not
   implemented yet :("
@@ -291,10 +291,10 @@ let test_make_entry_valid_pkt context =
   let xl_ip = Ipaddr.V4.of_string_exn "172.16.0.1" in
   let xl_port = 10201 in
   let smac_addr = Macaddr.of_string_exn "00:16:3e:65:65:65" in
-  let table = Lookup.empty () in
+  let table = Nat_lookup.empty () in
   let (frame, len) = basic_ipv4_frame proto src dst 52 smac_addr in
   let (frame, len) = add_udp (frame, len) sport dport in
-  match Rewrite.make_entry table frame (Ipaddr.V4 xl_ip) xl_port with
+  match Nat_rewrite.make_entry table frame (Ipaddr.V4 xl_ip) xl_port with
   | Overlap -> assert_failure "make_entry claimed overlap when inserting into an
                  empty table"
   | Unparseable ->
@@ -317,11 +317,11 @@ let test_make_entry_valid_pkt context =
       | _, None | None, _ -> assert_failure
         "make_entry claimed success, but was missing expected entries entirely"
     in
-    let src_lookup = Lookup.lookup t proto (V4 src, sport) (V4 dst, dport) in
-    let dst_lookup = Lookup.lookup t proto (V4 dst, dport) (V4 xl_ip, xl_port) in
+    let src_lookup = Nat_lookup.lookup t proto (V4 src, sport) (V4 dst, dport) in
+    let dst_lookup = Nat_lookup.lookup t proto (V4 dst, dport) (V4 xl_ip, xl_port) in
     check_entries src_lookup dst_lookup;
     (* trying the same operation again should give us an Overlap failure *)
-    match Rewrite.make_entry t frame (Ipaddr.V4 xl_ip) xl_port with
+    match Nat_rewrite.make_entry t frame (Ipaddr.V4 xl_ip) xl_port with
     | Overlap -> ()
     | Unparseable ->
       Printf.printf "Allegedly unparseable frame follows:\n";
@@ -340,7 +340,7 @@ let test_make_entry_nonsense context =
   let smac_addr = Macaddr.of_string_exn "00:16:3e:65:65:65" in
   let frame_size = (Wire_structs.sizeof_ethernet + Wire_structs.sizeof_ipv4) in
   let mangled_looking, _ = basic_ipv4_frame ~frame_size proto src dst 60 smac_addr in
-  match (Rewrite.make_entry (Lookup.empty ()) mangled_looking
+  match (Nat_rewrite.make_entry (Nat_lookup.empty ()) mangled_looking
            (Ipaddr.V4 xl_ip) xl_port) with
   | Overlap -> assert_failure "make_entry claimed a mangled packet was already
   in the table"
@@ -351,14 +351,14 @@ let test_make_entry_nonsense context =
     let dport = 80 in
     let broadcast, _ = add_tcp (basic_ipv4_frame 6 src broadcast_dst 30 smac_addr)
         sport dport in
-    match (Rewrite.make_entry (Lookup.empty ()) broadcast (Ipaddr.V4 xl_ip)
+    match (Nat_rewrite.make_entry (Nat_lookup.empty ()) broadcast (Ipaddr.V4 xl_ip)
              xl_port) with
     | Ok _ | Overlap -> assert_failure "make_entry happily took a broadcast
     packet"
     | Unparseable ->
       (* try just an ethernet frame *)
       let e = zero_cstruct (Cstruct.create Wire_structs.sizeof_ethernet) in
-      match (Rewrite.make_entry (Lookup.empty ()) e (Ipaddr.V4 xl_ip) xl_port)
+      match (Nat_rewrite.make_entry (Nat_lookup.empty ()) e (Ipaddr.V4 xl_ip) xl_port)
       with
       | Ok _ | Overlap -> assert_failure "make_entry claims to have succeeded
       with a bare ethernet frame"

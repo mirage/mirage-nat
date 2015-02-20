@@ -72,7 +72,7 @@ end
 
 type direction = Source | Destination
 type insert_result =
-  | Ok of Lookup.t
+  | Ok of Nat_lookup.t
   | Overlap
   | Unparseable
 
@@ -157,7 +157,7 @@ let translate table direction frame =
           match retrieve_ports higherproto_packet with
           | Some (sport, dport) -> (
             (* got everything; do the lookup *)
-            let result = Lookup.lookup table proto ((V4 src), sport) ((V4 dst), dport)
+            let result = Nat_lookup.lookup table proto ((V4 src), sport) ((V4 dst), dport)
             in
             match result with
               | Some (V4 new_ip, new_port) ->
@@ -198,7 +198,7 @@ let make_entry table frame xl_ip xl_port =
         (* only Organization and Global scope IPs get routed *)
         match check_scope src, check_scope dst with
         | true, true -> (
-            match Lookup.insert table proto (src, sport) (dst, dport) (xl_ip, xl_port)
+            match Nat_lookup.insert table proto (src, sport) (dst, dport) (xl_ip, xl_port)
             with
             | Some t -> Ok t
             | None -> Overlap
