@@ -247,8 +247,9 @@ let translate table direction frame =
   | Some (V6 src, V6 dst) -> None (* TODO, obviously *) (* ipv6 *)
   | _ -> None (* don't forward arp or other types *)
 
-let make_entry mode table frame (left_xl_ip, left_xl_port) (right_xl_ip,
-                                                            right_xl_port) =
+let make_entry mode table frame 
+    (other_xl_ip, other_xl_port) 
+    (final_destination_ip, final_destination_port) =
   (* basic sanity check; nothing smaller than this will be nat-able *)
   if (Cstruct.len frame) < (Wire_structs.sizeof_ethernet +
                           Wire_structs.sizeof_ipv4 + Wire_structs.sizeof_udp)
@@ -264,22 +265,30 @@ let make_entry mode table frame (left_xl_ip, left_xl_port) (right_xl_ip,
       | _ -> false
     in
     match (retrieve_ips frame), (retrieve_ports tx_layer) with
-    | Some (src, dst), Some (sport, dport) -> begin
+    | Some (frame_src_ip, frame_dst_ip), 
+      Some (frame_sport, frame_dport) -> begin
         (* only Organization and Global scope IPs get routed *)
-        match check_scope src, check_scope dst with
+        match check_scope frame_src_ip, check_scope frame_dst_ip with
         | true, true -> (
             let t = 
               match (mode : Nat_lookup.mode) with
               | Nat -> 
                 Nat_lookup.insert ~mode:Nat table proto 
-                        (src, sport) (dst, dport) 
-                        (left_xl_ip, left_xl_port) (left_xl_ip, left_xl_port)
+                        (frame_src_ip, frame_sport) (frame_dst_ip, frame_dport) 
+                        (other_xl_ip, other_xl_port) (other_xl_ip, other_xl_port)
               | Redirect -> 
-                  Nat_lookup.insert ~mode:Redirect table proto
-                          (src, sport) (dst, dport)
-                          (left_xl_ip, left_xl_port) (right_xl_ip,
-                                                      right_xl_port)
+                (* in redirect mode, frame_src_ip and frame_dst_ip aren't what we're expecting --
+                the packet actually addressed to one of the xl ip/port pairs,
+                  and the next hop is sent to us in the arguments for this
+                   function. *)
 
+                (* left side, right side, internal_xl, external_xl *)
+                  Nat_lookup.insert ~mode:Redirect table proto
+                    (frame_src_ip, frame_sport)  
+                    (final_destination_ip, final_destination_port)
+                    (frame_dst_ip, frame_dport)
+                    (other_xl_ip, other_xl_port)
+                    
             in
             match t with 
             | Some t -> Ok t
@@ -289,9 +298,16 @@ let make_entry mode table frame (left_xl_ip, left_xl_port) (right_xl_ip,
       end
     | _, _ -> Unparseable
 
-let make_redirect_entry table frame (xl_ip, xl_port) right_xl_port =
-  make_entry (Redirect : Nat_lookup.mode) table frame (xl_ip, xl_port) (xl_ip,
-                                                                        right_xl_port)
+(* the frame is addressed to one of our IPs.  We should rewrite the source with
+   the IP of our other interface, along with a randomized port. *)
+(* We need to be told the real destination IP and port (possibly we can assume
+   the same as the port the frame was addressed to). *)
+let make_redirect_entry table frame 
+    (other_xl_ip, other_xl_port) 
+    (final_destination_ip, final_destination_port) =
+  make_entry (Redirect : Nat_lookup.mode) table frame 
+    (other_xl_ip, other_xl_port)
+    (final_destination_ip, final_destination_port)
 
 let make_nat_entry table frame xl_ip xl_port =
   make_entry (Nat : Nat_lookup.mode) table frame (xl_ip, xl_port) (xl_ip, xl_port)

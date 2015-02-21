@@ -39,7 +39,7 @@ val make_nat_entry : Nat_lookup.t -> Cstruct.t -> Ipaddr.t -> int -> insert_resu
   * if insertion succeeded, return the new table;
   * otherwise, return an error type indicating the problem. *)
 val make_redirect_entry : Nat_lookup.t -> Cstruct.t -> (Ipaddr.t * int) 
-  -> int -> insert_result
+  -> (Ipaddr.t * int) -> insert_result
 
 (* given an ethernet-and-above frame, fish out the src and dst ip *)
 val ips_of_frame : Cstruct.t -> (Ipaddr.t * Ipaddr.t) option

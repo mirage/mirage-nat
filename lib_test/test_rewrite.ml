@@ -300,16 +300,20 @@ let check_entry expected (actual : ((Ipaddr.t * int) * (Ipaddr.t * int)) option)
 
 let test_make_redirect_entry_valid_pkt context =
   let proto = 17 in
-  let src = Ipaddr.V4.of_string_exn "172.16.2.30" in
-  let dst = Ipaddr.V4.of_string_exn "1.2.3.4" in
-  let xl_ip = Ipaddr.V4.of_string_exn "172.16.0.1" in
-  let sport, dport, xlport, rtport = 18787, 80, 10201, 8989 in
+  let internal_client = Ipaddr.V4.of_string_exn "172.16.2.30" in
+  let outside_requester = Ipaddr.V4.of_string_exn "1.2.3.4" in
+  let nat_external_ip = Ipaddr.V4.of_string_exn "208.121.103.4" in
+  let nat_internal_ip = Ipaddr.V4.of_string_exn "172.16.2.1" in
+  let internal_client_port, outside_requester_port, 
+      nat_external_port, nat_internal_port = 18787, 80, 80, 8989 in 
   let smac_addr = Macaddr.of_string_exn "00:16:3e:65:65:65" in
   let table = Nat_lookup.empty () in
-  let (frame, len) = basic_ipv4_frame proto src dst 52 smac_addr in
-  let (frame, len) = add_udp (frame, len) sport dport in
+  let (frame, len) = basic_ipv4_frame proto outside_requester nat_external_ip 52 smac_addr in
+  let (frame, len) = add_udp (frame, len) 
+      outside_requester_port nat_external_port in
   match Nat_rewrite.make_redirect_entry table frame 
-          ((Ipaddr.V4 xl_ip), xlport) rtport with
+          ((Ipaddr.V4 nat_internal_ip), nat_internal_port) 
+          ((Ipaddr.V4 internal_client), internal_client_port) with
   | Overlap -> assert_failure "make_redirect_entry claimed overlap when inserting into an
                  empty table"
   | Unparseable ->
@@ -318,13 +322,24 @@ let test_make_redirect_entry_valid_pkt context =
     assert_failure "make_redirect_entry claimed that a reference packet was unparseable"
   | Ok t ->
     (* make sure table actually has the entries we expect *)
-    let src_lookup = Nat_lookup.lookup t proto (V4 src, sport) (V4 xl_ip, xlport) in
-    let dst_lookup = Nat_lookup.lookup t proto (V4 dst, dport) (V4 xl_ip, rtport) in
-    check_entry (((V4 xl_ip), rtport), ((V4 dst), dport)) src_lookup;
-    check_entry (((V4 xl_ip), xlport), ((V4 src), sport)) dst_lookup;
+    let internal_client_lookup = Nat_lookup.lookup t proto
+        (V4 internal_client, internal_client_port)
+        (V4 nat_internal_ip, nat_internal_port)
+    in
+    let outside_requester_lookup = Nat_lookup.lookup t proto
+        (V4 outside_requester, outside_requester_port)
+        (V4 nat_external_ip, nat_external_port)
+    in
+    check_entry 
+      (((V4 nat_external_ip), nat_external_port), 
+       ((V4 outside_requester), outside_requester_port)) internal_client_lookup;
+    check_entry 
+      (((V4 nat_internal_ip), nat_internal_port), 
+       ((V4 internal_client), internal_client_port)) outside_requester_lookup;
     (* trying the same operation again should give us an Overlap failure *)
-    match Nat_rewrite.make_redirect_entry t frame ((Ipaddr.V4 xl_ip), xlport)
-            rtport with
+    match Nat_rewrite.make_redirect_entry table frame 
+            ((Ipaddr.V4 nat_internal_ip), nat_internal_port) 
+            ((Ipaddr.V4 internal_client), internal_client_port) with
     | Overlap -> ()
     | Unparseable ->
       Printf.printf "Allegedly unparseable frame follows:\n";
