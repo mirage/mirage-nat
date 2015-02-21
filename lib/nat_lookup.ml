@@ -10,6 +10,9 @@ type protocol = int
 type port = int (* TODO: should probably formalize that this is uint16 *)
 type t = (protocol * (Ipaddr.t * port) * (Ipaddr.t * port), 
           ((Ipaddr.t * port) * (Ipaddr.t * port))) Hashtbl.t
+type mode =
+  | Redirect
+  | Nat
 
 let string_of_t (table : t) =
   let print_pair (addr, port) =
@@ -32,16 +35,31 @@ let lookup table proto left right =
    both sides are already mapped to each other (currently this would be a noop,
 but there may in the future be more state associated with these entries that
   then should be updated) *)
-let insert table proto left right translate_left translate_right =
+let insert ?(mode=Nat) table proto left right translate_left translate_right =
   let open Hashtbl in
-  let internal_lookup = (proto, left, right) in
-  let external_lookup = (proto, right, translate_left) in
+  let mappings = function
+    | Nat ->
+      let internal_lookup = (proto, left, right) in
+      let external_lookup = (proto, right, translate_left) in
+      let internal_mapping = (translate_left, right) in
+      let external_mapping = (right, left) in
+      (internal_lookup, external_lookup, internal_mapping, external_mapping)
+    | Redirect ->
+      let internal_lookup = (proto, left, translate_left) in
+      let external_lookup = (proto, right, translate_right) in
+      let internal_mapping = (translate_right, right) in
+      let external_mapping = (translate_left, left) in
+      (internal_lookup, external_lookup, internal_mapping, external_mapping)
+  in
+  let (internal_lookup, external_lookup, internal_mapping, external_mapping) =
+    mappings mode 
+  in
   (* TODO: this is subject to race conditions *)
   (* needs Lwt.join *)
   match (mem table internal_lookup, mem table external_lookup) with
   | false, false ->
-    add table internal_lookup (translate_left, right);
-    add table external_lookup (right, left);
+    add table internal_lookup internal_mapping;
+    add table external_lookup external_mapping;
     Some table
   | _, _ -> None (* there's already a table entry *)
 

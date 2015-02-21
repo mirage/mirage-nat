@@ -247,7 +247,8 @@ let translate table direction frame =
   | Some (V6 src, V6 dst) -> None (* TODO, obviously *) (* ipv6 *)
   | _ -> None (* don't forward arp or other types *)
 
-let make_entry table frame xl_ip xl_port =
+let make_entry mode table frame (left_xl_ip, left_xl_port) (right_xl_ip,
+                                                            right_xl_port) =
   (* basic sanity check; nothing smaller than this will be nat-able *)
   if (Cstruct.len frame) < (Wire_structs.sizeof_ethernet +
                           Wire_structs.sizeof_ipv4 + Wire_structs.sizeof_udp)
@@ -267,13 +268,31 @@ let make_entry table frame xl_ip xl_port =
         (* only Organization and Global scope IPs get routed *)
         match check_scope src, check_scope dst with
         | true, true -> (
-            match Nat_lookup.insert table proto 
-                    (src, sport) (dst, dport) (xl_ip, xl_port) (xl_ip, xl_port)
-            with
+            let t = 
+              match (mode : Nat_lookup.mode) with
+              | Nat -> 
+                Nat_lookup.insert ~mode:Nat table proto 
+                        (src, sport) (dst, dport) 
+                        (left_xl_ip, left_xl_port) (left_xl_ip, left_xl_port)
+              | Redirect -> 
+                  Nat_lookup.insert ~mode:Redirect table proto
+                          (src, sport) (dst, dport)
+                          (left_xl_ip, left_xl_port) (right_xl_ip,
+                                                      right_xl_port)
+
+            in
+            match t with 
             | Some t -> Ok t
             | None -> Overlap
           )
         | _, _ -> Unparseable
       end
+    | _, _ -> Unparseable
 
-| _, _ -> Unparseable
+let make_redirect_entry table frame (xl_ip, xl_port) right_xl_port =
+  make_entry (Redirect : Nat_lookup.mode) table frame (xl_ip, xl_port) (xl_ip,
+                                                                        right_xl_port)
+
+let make_nat_entry table frame xl_ip xl_port =
+  make_entry (Nat : Nat_lookup.mode) table frame (xl_ip, xl_port) (xl_ip, xl_port)
+

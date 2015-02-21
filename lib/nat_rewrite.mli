@@ -18,9 +18,28 @@ val translate : Nat_lookup.t -> direction -> Cstruct.t -> Cstruct.t option
 (** given a table, a frame, and a translation IP and port,
   * put relevant entries for the (src_ip, src_port), (dst_ip, dst_port) from the
   * frame and given (xl_ip, xl_port).
+    entries will look like:
+    ((src_ip, src_port), (dst_ip, dst_port) to
+       (xl_ip, xl_port), (dst_ip, dst_port)) and
+    ((dst_ip, dst_port), (xl_ip, xl_port)) to
+       (dst_ip, dst_port), (src_ip, src_port)).
   * if insertion succeeded, return the new table;
   * otherwise, return an error type indicating the problem. *)
-val make_entry : Nat_lookup.t -> Cstruct.t -> Ipaddr.t -> int -> insert_result
+val make_nat_entry : Nat_lookup.t -> Cstruct.t -> Ipaddr.t -> int -> insert_result
+
+(** given a table, a frame, and a translation IP and port, 
+  * put relevant entries for the (src_ip, src_port), (dst_ip, dst_port) from the
+  * frame (xl_ip, xl_port) (xl_right_port), depending on the mode argument.
+    entries will look like:
+    ((src_ip, src_port), (xl_left_ip, xl_left_port)) to 
+         ((xl_right_ip, xl_right_port), (dst_ip, dst_port)) and
+    ((dst_ip, dst_port), (xl_right_ip, xl_right_port)) to 
+         ((xl_left_ip, xl_left_port), (src_ip, src_port)).
+    ((xl_ip, xl_right_port), (dst_ip, dst_port)) to (src_ip, src_port).
+  * if insertion succeeded, return the new table;
+  * otherwise, return an error type indicating the problem. *)
+val make_redirect_entry : Nat_lookup.t -> Cstruct.t -> (Ipaddr.t * int) 
+  -> int -> insert_result
 
 (* given an ethernet-and-above frame, fish out the src and dst ip *)
 val ips_of_frame : Cstruct.t -> (Ipaddr.t * Ipaddr.t) option

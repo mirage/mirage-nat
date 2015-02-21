@@ -285,54 +285,86 @@ let test_udp_ipv6 context =
   | Some xl_frame -> todo "Sanity checks for IPv6 UDP frame translation not
   implemented yet :("
 
-let test_make_entry_valid_pkt context =
+let check_entry expected (actual : ((Ipaddr.t * int) * (Ipaddr.t * int)) option) =
+  (* TODO: rewrite this; assert_equal and a printer function would be
+     clearer *)
+  let printer (left, right) =
+    Printf.sprintf "(%s, %d) -> (%s, %d)"
+      (Ipaddr.to_string (fst left)) (snd left) 
+      (Ipaddr.to_string (fst right)) (snd right) 
+  in
+  match actual with
+  | Some a -> assert_equal ~printer expected a
+  | None -> assert_failure
+              "make_entry claimed success, but was missing expected entries entirely"
+
+let test_make_redirect_entry_valid_pkt context =
   let proto = 17 in
   let src = Ipaddr.V4.of_string_exn "172.16.2.30" in
   let dst = Ipaddr.V4.of_string_exn "1.2.3.4" in
-  let sport = 18787 in
-  let dport = 80 in
   let xl_ip = Ipaddr.V4.of_string_exn "172.16.0.1" in
-  let xlport = 10201 in
+  let sport, dport, xlport, rtport = 18787, 80, 10201, 8989 in
   let smac_addr = Macaddr.of_string_exn "00:16:3e:65:65:65" in
   let table = Nat_lookup.empty () in
   let (frame, len) = basic_ipv4_frame proto src dst 52 smac_addr in
   let (frame, len) = add_udp (frame, len) sport dport in
-  match Nat_rewrite.make_entry table frame (Ipaddr.V4 xl_ip) xlport with
-  | Overlap -> assert_failure "make_entry claimed overlap when inserting into an
+  match Nat_rewrite.make_redirect_entry table frame 
+          ((Ipaddr.V4 xl_ip), xlport) rtport with
+  | Overlap -> assert_failure "make_redirect_entry claimed overlap when inserting into an
                  empty table"
   | Unparseable ->
     Printf.printf "Allegedly unparseable frame follows:\n";
     Cstruct.hexdump frame;
-    assert_failure "make_entry claimed that a reference packet was unparseable"
+    assert_failure "make_redirect_entry claimed that a reference packet was unparseable"
   | Ok t ->
     (* make sure table actually has the entries we expect *)
-    let check_entry expected (actual : ((Ipaddr.t * int) * (Ipaddr.t * int)) option) =
-      (* TODO: rewrite this; assert_equal and a printer function would be
-         clearer *)
-      let printer (left, right) =
-        Printf.sprintf "(%s, %d) -> (%s, %d)"
-          (Ipaddr.to_string (fst left)) (snd left) 
-          (Ipaddr.to_string (fst right)) (snd right) 
-      in
-      match actual with
-      | Some a -> assert_equal ~printer expected a
-      | None -> assert_failure
-        "make_entry claimed success, but was missing expected entries entirely"
-    in
+    let src_lookup = Nat_lookup.lookup t proto (V4 src, sport) (V4 xl_ip, xlport) in
+    let dst_lookup = Nat_lookup.lookup t proto (V4 dst, dport) (V4 xl_ip, rtport) in
+    check_entry (((V4 xl_ip), rtport), ((V4 dst), dport)) src_lookup;
+    check_entry (((V4 xl_ip), xlport), ((V4 src), sport)) dst_lookup;
+    (* trying the same operation again should give us an Overlap failure *)
+    match Nat_rewrite.make_redirect_entry t frame ((Ipaddr.V4 xl_ip), xlport)
+            rtport with
+    | Overlap -> ()
+    | Unparseable ->
+      Printf.printf "Allegedly unparseable frame follows:\n";
+      Cstruct.hexdump frame;
+      assert_failure "make_redirect_entry claimed that a reference packet was unparseable"
+    | Ok t -> assert_failure "make_redirect_entry allowed a duplicate entry"
+
+let test_make_nat_entry_valid_pkt context =
+  let proto = 17 in
+  let src = Ipaddr.V4.of_string_exn "172.16.2.30" in
+  let dst = Ipaddr.V4.of_string_exn "1.2.3.4" in
+  let xl_ip = Ipaddr.V4.of_string_exn "172.16.0.1" in
+  let sport, dport, xlport = 18787, 80, 10201 in
+  let smac_addr = Macaddr.of_string_exn "00:16:3e:65:65:65" in
+  let table = Nat_lookup.empty () in
+  let (frame, len) = basic_ipv4_frame proto src dst 52 smac_addr in
+  let (frame, len) = add_udp (frame, len) sport dport in
+  match Nat_rewrite.make_nat_entry table frame (Ipaddr.V4 xl_ip) xlport with
+  | Overlap -> assert_failure "make_nat_entry claimed overlap when inserting into an
+                 empty table"
+  | Unparseable ->
+    Printf.printf "Allegedly unparseable frame follows:\n";
+    Cstruct.hexdump frame;
+    assert_failure "make_nat_entry claimed that a reference packet was unparseable"
+  | Ok t ->
+    (* make sure table actually has the entries we expect *)
     let src_lookup = Nat_lookup.lookup t proto (V4 src, sport) (V4 dst, dport) in
     let dst_lookup = Nat_lookup.lookup t proto (V4 dst, dport) (V4 xl_ip, xlport) in
     check_entry (((V4 xl_ip), xlport), ((V4 dst), dport)) src_lookup;
     check_entry (((V4 dst), dport), ((V4 src), sport)) dst_lookup;
     (* trying the same operation again should give us an Overlap failure *)
-    match Nat_rewrite.make_entry t frame (Ipaddr.V4 xl_ip) xlport with
+    match Nat_rewrite.make_nat_entry t frame (Ipaddr.V4 xl_ip) xlport with
     | Overlap -> ()
     | Unparseable ->
       Printf.printf "Allegedly unparseable frame follows:\n";
       Cstruct.hexdump frame;
-      assert_failure "make_entry claimed that a reference packet was unparseable"
-    | Ok t -> assert_failure "make_entry allowed a duplicate entry"
+      assert_failure "make_nat_entry claimed that a reference packet was unparseable"
+    | Ok t -> assert_failure "make_nat_entry allowed a duplicate entry"
 
-let test_make_entry_nonsense context =
+let test_make_nat_entry_nonsense context =
   (* sorts of bad packets: broadcast packets,
      non-tcp/udp/icmp packets *)
   let proto = 17 in
@@ -343,27 +375,27 @@ let test_make_entry_nonsense context =
   let smac_addr = Macaddr.of_string_exn "00:16:3e:65:65:65" in
   let frame_size = (Wire_structs.sizeof_ethernet + Wire_structs.sizeof_ipv4) in
   let mangled_looking, _ = basic_ipv4_frame ~frame_size proto src dst 60 smac_addr in
-  match (Nat_rewrite.make_entry (Nat_lookup.empty ()) mangled_looking
+  match (Nat_rewrite.make_nat_entry (Nat_lookup.empty ()) mangled_looking
            (Ipaddr.V4 xl_ip) xlport) with
-  | Overlap -> assert_failure "make_entry claimed a mangled packet was already
+  | Overlap -> assert_failure "make_nat_entry claimed a mangled packet was already
   in the table"
-  | Ok t -> assert_failure "make_entry happily took a mangled packet"
+  | Ok t -> assert_failure "make_nat_entry happily took a mangled packet"
   | Unparseable ->
     let broadcast_dst = Ipaddr.V4.of_string_exn "255.255.255.255" in
     let sport = 45454 in
     let dport = 80 in
     let broadcast, _ = add_tcp (basic_ipv4_frame 6 src broadcast_dst 30 smac_addr)
         sport dport in
-    match (Nat_rewrite.make_entry (Nat_lookup.empty ()) broadcast (Ipaddr.V4 xl_ip)
+    match (Nat_rewrite.make_nat_entry (Nat_lookup.empty ()) broadcast (Ipaddr.V4 xl_ip)
              xlport) with
-    | Ok _ | Overlap -> assert_failure "make_entry happily took a broadcast
+    | Ok _ | Overlap -> assert_failure "make_nat_entry happily took a broadcast
     packet"
     | Unparseable ->
       (* try just an ethernet frame *)
       let e = zero_cstruct (Cstruct.create Wire_structs.sizeof_ethernet) in
-      match (Nat_rewrite.make_entry (Nat_lookup.empty ()) e (Ipaddr.V4 xl_ip) xlport)
+      match (Nat_rewrite.make_nat_entry (Nat_lookup.empty ()) e (Ipaddr.V4 xl_ip) xlport)
       with
-      | Ok _ | Overlap -> assert_failure "make_entry claims to have succeeded
+      | Ok _ | Overlap -> assert_failure "make_nat_entry claims to have succeeded
       with a bare ethernet frame"
       | Unparseable -> ()
 
@@ -379,9 +411,12 @@ let suite = "test-rewrite" >:::
               "UDP IPv6 rewriting works" >:: test_udp_ipv6;
               "TCP IPv6 rewriting works" >:: test_tcp_ipv6;
               (* TODO: 4-to-6, 6-to-4 tests *)
-              "make_entry makes entries" >:: test_make_entry_valid_pkt;
-              (* TODO: test make_entry in non-ipv4 contexts *)
-              "make_entry refuses nonsense frames" >:: test_make_entry_nonsense
+              "make_nat_entry makes entries" >:: test_make_nat_entry_valid_pkt;
+              (* TODO: test make_nat_entry in non-ipv4 contexts *)
+              "make_nat_entry refuses nonsense frames" >::
+              test_make_nat_entry_nonsense;
+              "make_redirect_entry makes entries" >::
+              test_make_redirect_entry_valid_pkt
             ]
 
 let () =
