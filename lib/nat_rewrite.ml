@@ -180,17 +180,15 @@ let rewrite_ip is_ipv6 (ip_layer : Cstruct.t) direction i =
      have to do 6-to-4 translation *)
   (* also, TODO all of the 6-to-4/4-to-6 thoughts and code.  nbd. *)
   match (is_ipv6, direction, i) with
-  | false, Source, (V4 new_ip, _) ->
-    Wire_structs.set_ipv4_src ip_layer (Ipaddr.V4.to_int32 new_ip)
-  | false, Destination, (_, V4 new_ip) ->
-    Wire_structs.set_ipv4_dst ip_layer (Ipaddr.V4.to_int32 new_ip)
+  | false, _, (V4 new_src, V4 new_dst) ->
+    Wire_structs.set_ipv4_src ip_layer (Ipaddr.V4.to_int32 new_src);
+    Wire_structs.set_ipv4_dst ip_layer (Ipaddr.V4.to_int32 new_dst)
   (* TODO: every other case *)
   | _, _, _ -> raise (Failure "ipv4-ipv4 is the only implemented case")
 
 let rewrite_port (txlayer : Cstruct.t) direction (sport, dport) =
-  match direction with
-  | Source -> Wire_structs.set_udp_source_port txlayer sport
-  | Destination -> Wire_structs.set_udp_dest_port txlayer dport
+  Wire_structs.set_udp_source_port txlayer sport;
+  Wire_structs.set_udp_dest_port txlayer dport
 
 let translate table direction frame =
   (* note that ethif.input doesn't have the same register-listeners-then-input
