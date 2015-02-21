@@ -180,17 +180,17 @@ let rewrite_ip is_ipv6 (ip_layer : Cstruct.t) direction i =
      have to do 6-to-4 translation *)
   (* also, TODO all of the 6-to-4/4-to-6 thoughts and code.  nbd. *)
   match (is_ipv6, direction, i) with
-  | false, Source, (V4 new_ip) ->
+  | false, Source, (V4 new_ip, _) ->
     Wire_structs.set_ipv4_src ip_layer (Ipaddr.V4.to_int32 new_ip)
-  | false, Destination, (V4 new_ip) ->
+  | false, Destination, (_, V4 new_ip) ->
     Wire_structs.set_ipv4_dst ip_layer (Ipaddr.V4.to_int32 new_ip)
   (* TODO: every other case *)
   | _, _, _ -> raise (Failure "ipv4-ipv4 is the only implemented case")
 
-let rewrite_port (txlayer : Cstruct.t) direction port =
+let rewrite_port (txlayer : Cstruct.t) direction (sport, dport) =
   match direction with
-  | Source -> Wire_structs.set_udp_source_port txlayer port
-  | Destination -> Wire_structs.set_udp_dest_port txlayer port
+  | Source -> Wire_structs.set_udp_source_port txlayer sport
+  | Destination -> Wire_structs.set_udp_dest_port txlayer dport
 
 let translate table direction frame =
   (* note that ethif.input doesn't have the same register-listeners-then-input
@@ -226,15 +226,18 @@ let translate table direction frame =
             let result = Nat_lookup.lookup table proto ((V4 src), sport) ((V4 dst), dport)
             in
             match result with
-              | Some (V4 new_ip, new_port) ->
+              | Some ((V4 new_src, new_sport), (V4 new_dst, new_dport)) ->
                 (* TODO: we should probably refuse to pass TTL = 0 and instead send an
                    ICMP message back to the sender *)
-                rewrite_ip false ip_packet direction (V4 new_ip);
-                rewrite_port higherproto_packet direction new_port;
+                rewrite_ip false ip_packet direction (V4 new_src, V4 new_dst);
+                rewrite_port higherproto_packet direction (new_sport, new_dport);
                 decrement_ttl ip_packet;
                 recalculate_ip_checksum ip_packet;
                 Some frame
-              | Some (V6 new_ip, new_port) -> None (* TODO: 4-to-6 logic *)
+
+              (* TODO: 4-to-6 logic *)
+              | Some ((V6 new_src, new_sport), (V6 new_dst, new_dport)) -> None 
+
               | None -> None (* don't autocreate new entries *)
             )
           | None -> None (* udp/tcp but couldn't get ports; drop it *)
@@ -264,7 +267,8 @@ let make_entry table frame xl_ip xl_port =
         (* only Organization and Global scope IPs get routed *)
         match check_scope src, check_scope dst with
         | true, true -> (
-            match Nat_lookup.insert table proto (src, sport) (dst, dport) (xl_ip, xl_port)
+            match Nat_lookup.insert table proto 
+                    (src, sport) (dst, dport) (xl_ip, xl_port) (xl_ip, xl_port)
             with
             | Some t -> Ok t
             | None -> Overlap

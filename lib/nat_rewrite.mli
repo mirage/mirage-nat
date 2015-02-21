@@ -39,6 +39,6 @@ val ports_of_frame : Cstruct.t -> (int * int) option
 val layers : Cstruct.t -> (Cstruct.t * Cstruct.t * Cstruct.t) option
 
 (* support for direct rewriting of packets *)
-val rewrite_ip : bool -> Cstruct.t -> direction -> Ipaddr.t -> unit
+val rewrite_ip : bool -> Cstruct.t -> direction -> (Ipaddr.t * Ipaddr.t) -> unit
 
-val rewrite_port : Cstruct.t -> direction -> int -> unit
+val rewrite_port : Cstruct.t -> direction -> (int * int) -> unit
