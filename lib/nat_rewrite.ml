@@ -236,7 +236,7 @@ let translate table direction frame =
 
               (* TODO: 4-to-6 logic *)
               | Some ((V6 new_src, new_sport), (V6 new_dst, new_dport)) -> None
-              | Some ((V6 _, _), (V4 _, _)) -> raise
+              | Some ((V6 _, _), (V4 _, _)) ->
                 raise (Invalid_argument "Impossible transformation in NAT
                                          table (src ipv6, dst ipv4)")
               | Some ((V4 _, _), (V6 _, _)) ->
