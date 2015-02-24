@@ -9,25 +9,46 @@ BuildTools: ocamlbuild
 
 Description: rewrite packets to support translation between external and internal address space
 
+Flag randomized
+  Description: build randomized tests (requires arbitrary-network)
+  Default: false
+
 Library "mirage-nat"
   Path: lib
   Modules: Nat_lookup, Nat_rewrite
   BuildDepends: ipaddr, tcpip, cstruct
 
-Executable test_lookup
+Executable randomized_tests
+  Build$: flag(randomized) && flag(tests)
   Path: lib_test
-  MainIs: test_lookup.ml
+  MainIs: test_randomized.ml
   ByteOpt: -g
   BuildDepends: oUnit, quickcheck, mirage-nat, arbitrary-network
 
-Test test_lookup
-  Command: $test_lookup
+Test randomized_tests
+  Run$: flag(randomized) && flag(tests)
+  Command: $randomized_tests
+
+Executable test_lookup
+  Build$: flag(tests)
+  Install: false
+  Path: lib_test
+  MainIs: test_lookup.ml
+  ByteOpt: -g
+  BuildDepends: oUnit, mirage-nat
 
 Executable test_rewrite
+  Build$: flag(tests)
+  Install: false
   Path: lib_test
   MainIs: test_rewrite.ml
   ByteOpt: -g
-  BuildDepends: oUnit, tcpip, quickcheck, mirage-nat, arbitrary-network
+  BuildDepends: oUnit, tcpip, mirage-nat
+
+Test test_lookup
+  Run$: flag(tests)
+  Command: $test_lookup
 
 Test test_rewrite
+  Run$: flag(tests)
   Command: $test_rewrite
