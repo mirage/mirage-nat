@@ -1,4 +1,5 @@
 open Ipaddr
+open Nat_lookup
 
 (* this is temporary -- waiting on merge of nojb's pr for cstruct in ipaddr,
  * see https://github.com/mirage/ocaml-ipaddr/pull/36
@@ -234,8 +235,13 @@ let translate table direction frame =
                 Some frame
 
               (* TODO: 4-to-6 logic *)
-              | Some ((V6 new_src, new_sport), (V6 new_dst, new_dport)) -> None 
-
+              | Some ((V6 new_src, new_sport), (V6 new_dst, new_dport)) -> None
+              | Some ((V6 _, _), (V4 _, _)) -> raise
+                raise (Invalid_argument "Impossible transformation in NAT
+                                         table (src ipv6, dst ipv4)")
+              | Some ((V4 _, _), (V6 _, _)) ->
+                raise (Invalid_argument "Impossible transformation in NAT
+                                         table (src ipv4, dst ipv6)")
               | None -> None (* don't autocreate new entries *)
             )
           | None -> None (* udp/tcp but couldn't get ports; drop it *)
@@ -245,8 +251,8 @@ let translate table direction frame =
   | Some (V6 src, V6 dst) -> None (* TODO, obviously *) (* ipv6 *)
   | _ -> None (* don't forward arp or other types *)
 
-let make_entry mode table frame 
-    (other_xl_ip, other_xl_port) 
+let make_entry mode table frame
+    (other_xl_ip, other_xl_port)
     (final_destination_ip, final_destination_port) =
   (* basic sanity check; nothing smaller than this will be nat-able *)
   if (Cstruct.len frame) < (Wire_structs.sizeof_ethernet +
@@ -263,18 +269,18 @@ let make_entry mode table frame
       | _ -> false
     in
     match (retrieve_ips frame), (retrieve_ports tx_layer) with
-    | Some (frame_src_ip, frame_dst_ip), 
+    | Some (frame_src_ip, frame_dst_ip),
       Some (frame_sport, frame_dport) -> begin
         (* only Organization and Global scope IPs get routed *)
         match check_scope frame_src_ip, check_scope frame_dst_ip with
         | true, true -> (
-            let t = 
+            let t =
               match (mode : Nat_lookup.mode) with
-              | Nat -> 
-                Nat_lookup.insert ~mode:Nat table proto 
-                        (frame_src_ip, frame_sport) (frame_dst_ip, frame_dport) 
+              | Nat ->
+                Nat_lookup.insert ~mode:Nat table proto
+                        (frame_src_ip, frame_sport) (frame_dst_ip, frame_dport)
                         (other_xl_ip, other_xl_port) (other_xl_ip, other_xl_port)
-              | Redirect -> 
+              | Redirect ->
                 (* in redirect mode, frame_src_ip and frame_dst_ip aren't what we're expecting --
                 the packet actually addressed to one of the xl ip/port pairs,
                   and the next hop is sent to us in the arguments for this
@@ -282,13 +288,13 @@ let make_entry mode table frame
 
                 (* left side, right side, internal_xl, external_xl *)
                   Nat_lookup.insert ~mode:Redirect table proto
-                    (frame_src_ip, frame_sport)  
+                    (frame_src_ip, frame_sport)
                     (final_destination_ip, final_destination_port)
                     (frame_dst_ip, frame_dport)
                     (other_xl_ip, other_xl_port)
-                    
+
             in
-            match t with 
+            match t with
             | Some t -> Ok t
             | None -> Overlap
           )
@@ -300,10 +306,10 @@ let make_entry mode table frame
    the IP of our other interface, along with a randomized port. *)
 (* We need to be told the real destination IP and port (possibly we can assume
    the same as the port the frame was addressed to). *)
-let make_redirect_entry table frame 
-    (other_xl_ip, other_xl_port) 
+let make_redirect_entry table frame
+    (other_xl_ip, other_xl_port)
     (final_destination_ip, final_destination_port) =
-  make_entry (Redirect : Nat_lookup.mode) table frame 
+  make_entry (Redirect : Nat_lookup.mode) table frame
     (other_xl_ip, other_xl_port)
     (final_destination_ip, final_destination_port)
 
