@@ -423,8 +423,10 @@ let suite = "test-rewrite" >:::
               "TCP IPv4 source rewriting works" >:: test_tcp_ipv4_src ;
               "UDP IPv4 destination rewriting works" >:: test_udp_ipv4_dst;
               (* TODO UDP IPv4 source rewriting test *)
+              (* 
               "UDP IPv6 rewriting works" >:: test_udp_ipv6;
-              "TCP IPv6 rewriting works" >:: test_tcp_ipv6;
+                "TCP IPv6 rewriting works" >:: test_tcp_ipv6; 
+              *)
               (* TODO: 4-to-6, 6-to-4 tests *)
               "make_nat_entry makes entries" >:: test_make_nat_entry_valid_pkt;
               (* TODO: test make_nat_entry in non-ipv4 contexts *)
