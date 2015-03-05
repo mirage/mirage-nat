@@ -1,6 +1,6 @@
 opam-version: "1.2"
 name: "ocaml-nat"
-version: "0.1"
+version: "0.2"
 maintainer: "Mindy Preston <meetup@yomimono.org>"
 authors: "Mindy Preston <meetup@yomimono.org>"
 homepage: "https://github.com/yomimono/ocaml-nat"

@@ -1,6 +1,6 @@
 # OASIS_START
-# DO NOT EDIT (digest: cee2b2a99653003a0fdb8c815cb5217a)
-version = "0.0.1"
+# DO NOT EDIT (digest: d0627a69d7a336ae42609fd411bb83c5)
+version = "0.2"
 description = "an embryonic NAT module"
 requires = "ipaddr tcpip cstruct"
 archive(byte) = "mirage-nat.cma"
