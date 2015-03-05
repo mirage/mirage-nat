@@ -88,7 +88,7 @@ let checksum =
   Cstruct.set_uint8 pbuf 0 0;
   fun frame bufs ->
     let frame = Cstruct.shift frame Wire_structs.sizeof_ethernet in
-    Cstruct.set_uint8 pbuf 1 (Wire_structs.get_ipv4_proto frame);
+    Cstruct.set_uint8 pbuf 1 (Wire_structs.Ipv4_wire.get_ipv4_proto frame);
     Cstruct.BE.set_uint16 pbuf 2 (Cstruct.lenv bufs);
     let src_dst = Cstruct.sub frame 12 (2 * 4) in
     Tcpip_checksum.ones_complement_list (src_dst :: pbuf :: bufs)
@@ -96,12 +96,12 @@ let checksum =
 (* TODO: it's not clear where this function should be, but it probably shouldn't
    be here in the long run. *)
 let addresses_of_ip ip_packet =
-  let hlen_version = Wire_structs.get_ipv4_hlen_version ip_packet in
+  let hlen_version = Wire_structs.Ipv4_wire.get_ipv4_hlen_version ip_packet in
   let ip_type = ((hlen_version land 0xf0) lsr 4) in
   match ip_type with
   | 4 -> (* ipv4 *)
-    (Ipaddr.V4 (Ipaddr.V4.of_int32 (Wire_structs.get_ipv4_src ip_packet)),
-     Ipaddr.V4 (Ipaddr.V4.of_int32 (Wire_structs.get_ipv4_dst ip_packet)))
+    (Ipaddr.V4 (Ipaddr.V4.of_int32 (Wire_structs.Ipv4_wire.get_ipv4_src ip_packet)),
+     Ipaddr.V4 (Ipaddr.V4.of_int32 (Wire_structs.Ipv4_wire.get_ipv4_dst ip_packet)))
   | 6 -> (* ipv6 *)
     (Ipaddr.V6 (V6.of_cstruct_exn (Wire_structs.Ipv6_wire.get_ipv6_src ip_packet)),
      Ipaddr.V6 (V6.of_cstruct_exn (Wire_structs.Ipv6_wire.get_ipv6_dst ip_packet)))
@@ -114,7 +114,7 @@ let retrieve_ports tx_layer =
 
 let ip_and_above_of_frame frame =
   let minimal_size = function
-    | 0x0800 -> Wire_structs.sizeof_ipv4 + Wire_structs.sizeof_ethernet
+    | 0x0800 -> Wire_structs.Ipv4_wire.sizeof_ipv4 + Wire_structs.sizeof_ethernet
     | 0x86dd -> Wire_structs.Ipv6_wire.sizeof_ipv6 +
                 Wire_structs.sizeof_ethernet
     | _ -> raise (Invalid_argument "minimal_size called with unknown ethertype")
@@ -127,9 +127,9 @@ let ip_and_above_of_frame frame =
   | _ -> None
 
 let proto_of_ip ip_layer =
-  let hlen_version = Wire_structs.get_ipv4_hlen_version ip_layer in
+  let hlen_version = Wire_structs.Ipv4_wire.get_ipv4_hlen_version ip_layer in
   match ((hlen_version land 0xf0) lsr 4) with
-  | 4 -> Wire_structs.get_ipv4_proto ip_layer
+  | 4 -> Wire_structs.Ipv4_wire.get_ipv4_proto ip_layer
   | 6 -> Wire_structs.Ipv6_wire.get_ipv6_nhdr ip_layer
 
 let transport_and_above_of_ip ip =
@@ -145,7 +145,7 @@ let transport_and_above_of_ip ip =
       Some Wire_structs.Ipv6_wire.sizeof_ipv6
     | n -> None
   in
-  let hlen_version = Wire_structs.get_ipv4_hlen_version ip in
+  let hlen_version = Wire_structs.Ipv4_wire.get_ipv4_hlen_version ip in
   match length hlen_version with
   | None -> None
   | Some n -> 
@@ -177,8 +177,8 @@ let rewrite_ip is_ipv6 (ip_layer : Cstruct.t) direction i =
   (* also, TODO all of the 6-to-4/4-to-6 thoughts and code.  nbd. *)
   match (is_ipv6, direction, i) with
   | false, _, (V4 new_src, V4 new_dst) ->
-    Wire_structs.set_ipv4_src ip_layer (Ipaddr.V4.to_int32 new_src);
-    Wire_structs.set_ipv4_dst ip_layer (Ipaddr.V4.to_int32 new_dst)
+    Wire_structs.Ipv4_wire.set_ipv4_src ip_layer (Ipaddr.V4.to_int32 new_src);
+    Wire_structs.Ipv4_wire.set_ipv4_dst ip_layer (Ipaddr.V4.to_int32 new_dst)
   (* TODO: every other case *)
   | _, _, _ -> raise (Failure "ipv4-ipv4 is the only implemented case")
 
@@ -190,18 +190,18 @@ let translate table direction frame =
   (* note that ethif.input doesn't have the same register-listeners-then-input
      format that tcp/udp do, so we could use it for the outer layer of parsing *)
   let decrement_ttl ip_layer =
-    Wire_structs.set_ipv4_ttl ip_layer
-      ((Wire_structs.get_ipv4_ttl ip_layer) - 1)
+    Wire_structs.Ipv4_wire.set_ipv4_ttl ip_layer
+      ((Wire_structs.Ipv4_wire.get_ipv4_ttl ip_layer) - 1)
   in
   (* TODO: this is not correct for IPv6 *)
   (* TODO: it's not clear to me whether we need to do this, since most users
     will be sending packets via IP.write, which itself calculates and inserts
     the proper checksum before sending the packet. *)
-  let recalculate_ip_checksum ip_layer =
-    Wire_structs.set_ipv4_csum ip_layer 0;
-    let just_ipv4 = Cstruct.sub ip_layer 0 (Wire_structs.sizeof_ipv4) in
+  let recalculate_ip_checksum ip_layer size =
+    Wire_structs.Ipv4_wire.set_ipv4_csum ip_layer 0;
+    let just_ipv4 = Cstruct.sub ip_layer 0 size in
     let new_csum = Tcpip_checksum.ones_complement just_ipv4 in
-    Wire_structs.set_ipv4_csum ip_layer new_csum
+    Wire_structs.Ipv4_wire.set_ipv4_csum ip_layer new_csum
   in
   match (layers frame) with
   | None -> None (* un-NATtable packet; drop it like it's hot *)
@@ -223,7 +223,8 @@ let translate table direction frame =
               rewrite_ip false ip_packet direction (V4 new_src, V4 new_dst);
               rewrite_port higherproto_packet direction (new_sport, new_dport);
               decrement_ttl ip_packet;
-              recalculate_ip_checksum ip_packet;
+              recalculate_ip_checksum ip_packet  
+                ((Cstruct.len ip_packet) - (Cstruct.len higherproto_packet));
               Some frame
 
             (* TODO: 4-to-6 logic *)

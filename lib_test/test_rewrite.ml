@@ -13,7 +13,7 @@ let ip_and_above_of_frame frame =
   | _ -> assert_failure "tried to get ip layer of non-ip frame"
 
 let transport_and_above_of_ip ip =
-  let hlen_version = Wire_structs.get_ipv4_hlen_version ip in
+  let hlen_version = Wire_structs.Ipv4_wire.get_ipv4_hlen_version ip in
   match ((hlen_version land 0xf0) lsr 4) with
   | 4 -> (* length (in words, not bytes) is in the other half of hlen_version *)
     Cstruct.shift ip ((hlen_version land 0x0f) * 4)
@@ -29,21 +29,21 @@ let transport_and_above_of_ip ip =
 let basic_ipv4_frame ?(frame_size=1024) proto src dst ttl smac_addr =
   let ethernet_frame = zero_cstruct (Cstruct.create frame_size) in (* altered *)
   let ethernet_frame = Cstruct.set_len ethernet_frame
-      (Wire_structs.sizeof_ethernet + Wire_structs.sizeof_ipv4) in
+      (Wire_structs.sizeof_ethernet + Wire_structs.Ipv4_wire.sizeof_ipv4) in
   let smac = Macaddr.to_bytes smac_addr in (* altered *)
   Wire_structs.set_ethernet_src smac 0 ethernet_frame;
   Wire_structs.set_ethernet_ethertype ethernet_frame 0x0800;
   let buf = ip_and_above_of_frame ethernet_frame in
   (* Write the constant IPv4 header fields *)
-  Wire_structs.set_ipv4_hlen_version buf ((4 lsl 4) + (5));
-  Wire_structs.set_ipv4_tos buf 0;
-  Wire_structs.set_ipv4_off buf 0;
-  Wire_structs.set_ipv4_ttl buf ttl;
-  Wire_structs.set_ipv4_proto buf proto;
-  Wire_structs.set_ipv4_src buf (Ipaddr.V4.to_int32 src); (* altered *)
-  Wire_structs.set_ipv4_dst buf (Ipaddr.V4.to_int32 dst);
-  Wire_structs.set_ipv4_id buf 0x4142;
-  let len = Wire_structs.sizeof_ethernet + Wire_structs.sizeof_ipv4 in
+  Wire_structs.Ipv4_wire.set_ipv4_hlen_version buf ((4 lsl 4) + (5));
+  Wire_structs.Ipv4_wire.set_ipv4_tos buf 0;
+  Wire_structs.Ipv4_wire.set_ipv4_off buf 0;
+  Wire_structs.Ipv4_wire.set_ipv4_ttl buf ttl;
+  Wire_structs.Ipv4_wire.set_ipv4_proto buf proto;
+  Wire_structs.Ipv4_wire.set_ipv4_src buf (Ipaddr.V4.to_int32 src); (* altered *)
+  Wire_structs.Ipv4_wire.set_ipv4_dst buf (Ipaddr.V4.to_int32 dst);
+  Wire_structs.Ipv4_wire.set_ipv4_id buf 0x4142;
+  let len = Wire_structs.sizeof_ethernet + Wire_structs.Ipv4_wire.sizeof_ipv4 in
   (ethernet_frame, len)
 
 let basic_ipv6_frame proto src dst ttl smac_addr =
@@ -98,12 +98,12 @@ let test_ipv4_rewriting exp_src exp_dst exp_proto exp_ttl xl_frame =
   (* should still be an ipv4 packet *)
   assert_equal 0x0800 (Wire_structs.get_ethernet_ethertype xl_frame);
 
-  assert_equal ~printer (Ipaddr.V4.to_int32 (exp_src)) (Wire_structs.get_ipv4_src ipv4);
-  assert_equal ~printer (Ipaddr.V4.to_int32 (exp_dst)) (Wire_structs.get_ipv4_dst ipv4);
-  assert_equal ~printer:string_of_int exp_proto (Wire_structs.get_ipv4_proto ipv4);
+  assert_equal ~printer (Ipaddr.V4.to_int32 (exp_src)) (Wire_structs.Ipv4_wire.get_ipv4_src ipv4);
+  assert_equal ~printer (Ipaddr.V4.to_int32 (exp_dst)) (Wire_structs.Ipv4_wire.get_ipv4_dst ipv4);
+  assert_equal ~printer:string_of_int exp_proto (Wire_structs.Ipv4_wire.get_ipv4_proto ipv4);
 
   (* TTL should be the expected value, which the caller sets to k-1 *)
-  assert_equal ~printer:string_of_int exp_ttl (Wire_structs.get_ipv4_ttl ipv4)
+  assert_equal ~printer:string_of_int exp_ttl (Wire_structs.Ipv4_wire.get_ipv4_ttl ipv4)
 
   (* don't do checksum checking for now *)
 
@@ -388,7 +388,7 @@ let test_make_nat_entry_nonsense context =
   let xl_ip = Ipaddr.V4.of_string_exn "172.16.0.1" in
   let xlport = 10201 in
   let smac_addr = Macaddr.of_string_exn "00:16:3e:65:65:65" in
-  let frame_size = (Wire_structs.sizeof_ethernet + Wire_structs.sizeof_ipv4) in
+  let frame_size = (Wire_structs.sizeof_ethernet + Wire_structs.Ipv4_wire.sizeof_ipv4) in
   let mangled_looking, _ = basic_ipv4_frame ~frame_size proto src dst 60 smac_addr in
   match (Nat_rewrite.make_nat_entry (Nat_lookup.empty ()) mangled_looking
            (Ipaddr.V4 xl_ip) xlport) with
