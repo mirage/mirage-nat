@@ -1,11 +1,11 @@
 opam-version: "1.2"
-name: "ocaml-nat"
+name: "mirage-nat"
 version: "0.2"
 maintainer: "Mindy Preston <meetup@yomimono.org>"
 authors: "Mindy Preston <meetup@yomimono.org>"
-homepage: "https://github.com/yomimono/ocaml-nat"
-bug-reports: "https://github.com/yomimono/ocaml-nat/issues/"
-dev-repo: "https://github.com/yomimono/ocaml-nat.git"
+homepage: "https://github.com/yomimono/mirage-nat"
+bug-reports: "https://github.com/yomimono/mirage-nat/issues/"
+dev-repo: "https://github.com/yomimono/mirage-nat.git"
 license: "ISC"
 
 build: [
