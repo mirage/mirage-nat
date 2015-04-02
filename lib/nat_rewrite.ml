@@ -131,18 +131,20 @@ let ip_header_length hlen_version =
 
 let transport_and_above_of_ip ip =
   let long_enough = function
-    | 6 -> Wire_structs.Tcp_wire.sizeof_tcp
-    | 17 -> Wire_structs.sizeof_udp
+    | 6 -> Some Wire_structs.Tcp_wire.sizeof_tcp
+    | 17 -> Some Wire_structs.sizeof_udp
   in
   let hlen_version = Wire_structs.Ipv4_wire.get_ipv4_hlen_version ip in
   match ip_header_length hlen_version with
   | None -> None
   | Some n -> 
-    let minimum_tx_header = long_enough (proto_of_ip ip) in
-    if ((Cstruct.len ip) < (n + minimum_tx_header)) then
-      None 
-    else
-      Some (Cstruct.shift ip n)
+    match long_enough (proto_of_ip ip) with
+    | None -> None
+    | Some minimum_tx_header ->
+      if ((Cstruct.len ip) < (n + minimum_tx_header)) then
+        None 
+      else
+        Some (Cstruct.shift ip n)
 
 let ports_of_transport tx_layer =
   ((Wire_structs.get_udp_source_port tx_layer : int),
