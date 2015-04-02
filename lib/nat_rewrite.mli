@@ -80,4 +80,6 @@ val set_smac : ethernet layer -> Macaddr.t -> ethernet layer
 (* support for direct rewriting of packets *)
 val rewrite_ip : bool -> ip layer -> direction -> (Ipaddr.t * Ipaddr.t) -> unit
 
+val ethip_headers : (ethernet layer * ip layer) -> Cstruct.t option
+
 val rewrite_port : transport layer -> direction -> (int * int) -> unit
