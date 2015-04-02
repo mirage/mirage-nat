@@ -62,6 +62,10 @@ val ports_of_transport : transport layer -> (int * int)
 *)
 val layers : Cstruct.t -> (ethernet layer * ip layer * transport layer) option
 
+(* attempt to decompose an ethernet frame into just the ethernet and ip headers.
+*)
+val ethip_headers : (ethernet layer * ip layer) -> Cstruct.t option
+
 (* support for direct rewriting of packets *)
 val rewrite_ip : bool -> ip layer -> direction -> (Ipaddr.t * Ipaddr.t) -> unit
 

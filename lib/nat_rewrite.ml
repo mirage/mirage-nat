@@ -82,17 +82,6 @@ type ethernet
 type ip
 type transport
 
-(* reproduced from ipv4.checksum *)
-let checksum =
-  let pbuf = Cstruct.create 4 in
-  Cstruct.set_uint8 pbuf 0 0;
-  fun frame bufs ->
-    let frame = Cstruct.shift frame Wire_structs.sizeof_ethernet in
-    Cstruct.set_uint8 pbuf 1 (Wire_structs.Ipv4_wire.get_ipv4_proto frame);
-    Cstruct.BE.set_uint16 pbuf 2 (Cstruct.lenv bufs);
-    let src_dst = Cstruct.sub frame 12 (2 * 4) in
-    Tcpip_checksum.ones_complement_list (src_dst :: pbuf :: bufs)
-
 (* TODO: it's not clear where this function should be, but it probably shouldn't
    be here in the long run. *)
 let addresses_of_ip ip_packet =
@@ -132,21 +121,28 @@ let proto_of_ip ip_layer =
   | 4 -> Wire_structs.Ipv4_wire.get_ipv4_proto ip_layer
   | 6 -> Wire_structs.Ipv6_wire.get_ipv6_nhdr ip_layer
 
+let ip_header_length hlen_version = 
+  match ((hlen_version land 0xf0) lsr 4) with
+  | 4 -> (* length (in words, not bytes) is in the other half of hlen_version *)
+    Some ((hlen_version land 0x0f) * 4)
+  | 6 -> (* ipv6 is a constant length *)
+    Some Wire_structs.Ipv6_wire.sizeof_ipv6
+  | n -> None
+
+let ethip_headers (ethernet, ip) =
+  let ethersize = Wire_structs.sizeof_ethernet in
+  match ip_header_length (Wire_structs.Ipv4_wire.get_ipv4_hlen_version ip) with
+  | Some ip_len when Cstruct.len ethernet < (ethersize + ip_len) -> 
+    Some (Cstruct.sub ethernet 0 (ethersize + ip_len))
+  | None | Some _ -> None
+
 let transport_and_above_of_ip ip =
   let long_enough = function
     | 6 -> Wire_structs.Tcp_wire.sizeof_tcp
     | 17 -> Wire_structs.sizeof_udp
   in
-  let length hlen_version = 
-    match ((hlen_version land 0xf0) lsr 4) with
-    | 4 -> (* length (in words, not bytes) is in the other half of hlen_version *)
-      Some ((hlen_version land 0x0f) * 4)
-    | 6 -> (* ipv6 is a constant length *)
-      Some Wire_structs.Ipv6_wire.sizeof_ipv6
-    | n -> None
-  in
   let hlen_version = Wire_structs.Ipv4_wire.get_ipv4_hlen_version ip in
-  match length hlen_version with
+  match ip_header_length hlen_version with
   | None -> None
   | Some n -> 
     let minimum_tx_header = long_enough (proto_of_ip ip) in
