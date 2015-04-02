@@ -316,3 +316,6 @@ let recalculate_transport_checksum csum_fn (ethernet, ip_layer,
     in
     (just_headers, transport_layer)
 
+let set_smac ethernet mac =
+  Wire_structs.set_ethernet_src (Macaddr.to_bytes mac) 0 ethernet;
+  ethernet

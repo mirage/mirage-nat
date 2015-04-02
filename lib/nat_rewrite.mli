@@ -74,6 +74,9 @@ val recalculate_transport_checksum : (Cstruct.t -> Cstruct.t list -> int) ->
   (ethernet layer * ip layer * transport layer) 
   -> (Cstruct.t * Cstruct.t)
 
+(* set the ethernet source address to the provided MAC address *)
+val set_smac : ethernet layer -> Macaddr.t -> ethernet layer
+
 (* support for direct rewriting of packets *)
 val rewrite_ip : bool -> ip layer -> direction -> (Ipaddr.t * Ipaddr.t) -> unit
 
