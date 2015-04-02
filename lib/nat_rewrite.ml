@@ -133,6 +133,7 @@ let transport_and_above_of_ip ip =
   let long_enough = function
     | 6 -> Some Wire_structs.Tcp_wire.sizeof_tcp
     | 17 -> Some Wire_structs.sizeof_udp
+    | _ -> None
   in
   let hlen_version = Wire_structs.Ipv4_wire.get_ipv4_hlen_version ip in
   match ip_header_length hlen_version with
