@@ -129,13 +129,6 @@ let ip_header_length hlen_version =
     Some Wire_structs.Ipv6_wire.sizeof_ipv6
   | n -> None
 
-let ethip_headers (ethernet, ip) =
-  let ethersize = Wire_structs.sizeof_ethernet in
-  match ip_header_length (Wire_structs.Ipv4_wire.get_ipv4_hlen_version ip) with
-  | Some ip_len when Cstruct.len ethernet < (ethersize + ip_len) -> 
-    Some (Cstruct.sub ethernet 0 (ethersize + ip_len))
-  | None | Some _ -> None
-
 let transport_and_above_of_ip ip =
   let long_enough = function
     | 6 -> Wire_structs.Tcp_wire.sizeof_tcp
@@ -293,4 +286,33 @@ let make_redirect_entry table frame
 
 let make_nat_entry table frame xl_ip xl_port =
   make_entry (Nat : Nat_lookup.mode) table frame (xl_ip, xl_port) (xl_ip, xl_port)
+
+let recalculate_transport_checksum csum_fn (ethernet, ip_layer,
+                                            transport_layer) =
+  let ethip_headers (e, i) =
+    let ethersize = Wire_structs.sizeof_ethernet in
+    match ip_header_length (Wire_structs.Ipv4_wire.get_ipv4_hlen_version e) with
+    | Some ip_len when Cstruct.len e < (ethersize + ip_len) -> 
+      Some (Cstruct.sub e 0 (ethersize + ip_len))
+    | None | Some _ -> None
+  in
+  match ethip_headers (ethernet, ip_layer) with
+  | None -> raise (Invalid_argument 
+                     "Could not recalculate transport-layer checksum after NAT rewrite")
+  | Some just_headers ->
+    let fix_checksum set_checksum ip_layer higherlevel_data =
+      (* reset checksum to 0 for recalculation *)
+      set_checksum higherlevel_data 0;
+      let actual_checksum = csum_fn just_headers (higherlevel_data :: []) in
+      set_checksum higherlevel_data actual_checksum
+    in
+    let () = match proto_of_ip ip_layer with
+      | 17 ->
+        fix_checksum Wire_structs.set_udp_checksum ip_layer transport_layer 
+      | 6 ->
+        fix_checksum Wire_structs.Tcp_wire.set_tcp_checksum ip_layer
+          transport_layer
+      | _ -> ()
+    in
+    (just_headers, transport_layer)
 
