@@ -1,6 +1,6 @@
 OASISFormat: 0.4
 Name: mirage-nat
-Version: 0.2.2
+Version: 0.2.3
 Synopsis: an embryonic NAT module
 Authors: Mindy Preston (meetup@yomimono.org)
 License: ISC
