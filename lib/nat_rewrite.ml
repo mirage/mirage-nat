@@ -290,15 +290,15 @@ let make_redirect_entry table frame
 let make_nat_entry table frame xl_ip xl_port =
   make_entry (Nat : Nat_lookup.mode) table frame (xl_ip, xl_port) (xl_ip, xl_port)
 
+let ethip_headers (e, i) =
+  let ethersize = Wire_structs.sizeof_ethernet in
+  match ip_header_length (Wire_structs.Ipv4_wire.get_ipv4_hlen_version i) with
+  | Some ip_len when Cstruct.len e >= (ethersize + ip_len) -> 
+    Some (Cstruct.sub e 0 (ethersize + ip_len))
+  | None | Some _ -> None
+
 let recalculate_transport_checksum csum_fn (ethernet, ip_layer,
                                             transport_layer) =
-  let ethip_headers (e, i) =
-    let ethersize = Wire_structs.sizeof_ethernet in
-    match ip_header_length (Wire_structs.Ipv4_wire.get_ipv4_hlen_version e) with
-    | Some ip_len when Cstruct.len e < (ethersize + ip_len) -> 
-      Some (Cstruct.sub e 0 (ethersize + ip_len))
-    | None | Some _ -> None
-  in
   match ethip_headers (ethernet, ip_layer) with
   | None -> raise (Invalid_argument 
                      "Could not recalculate transport-layer checksum after NAT rewrite")

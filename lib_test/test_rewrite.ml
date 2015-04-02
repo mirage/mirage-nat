@@ -7,6 +7,8 @@ let zero_cstruct cs =
   let i = Cstruct.iter (fun c -> Some 1) zero cs in
   Cstruct.fold (fun b a -> b) i cs
 
+let ipv4_of_str = Ipaddr.V4.of_string_exn
+
 let ip_and_above_of_frame frame =
   match (Wire_structs.get_ethernet_ethertype frame) with
   | 0x0800 | 0x86dd -> Cstruct.shift frame Wire_structs.sizeof_ethernet
@@ -148,9 +150,9 @@ let basic_tcpv4 (direction : Nat_rewrite.direction) proto ttl src dst xl sport d
 let test_tcp_ipv4_dst context =
   let ttl = 4 in
   let proto = 6 in
-  let src = (Ipaddr.V4.of_string_exn "192.168.108.26") in
-  let dst = (Ipaddr.V4.of_string_exn "4.141.2.6") in
-  let xl = (Ipaddr.V4.of_string_exn "128.104.108.1") in
+  let src = (ipv4_of_str "192.168.108.26") in
+  let dst = (ipv4_of_str "4.141.2.6") in
+  let xl = (ipv4_of_str "128.104.108.1") in
   let sport, dport, xlport = 255, 1024, 45454 in
   let frame, table = basic_tcpv4 Destination proto ttl src dst xl sport dport xlport in
   (* basic_tcpv4 should return a frame that needs destination rewriting --
@@ -185,9 +187,9 @@ let test_tcp_ipv4_dst context =
 let test_tcp_ipv4_src context =
   let ttl = 4 in
   let proto = 6 in
-  let src = (Ipaddr.V4.of_string_exn "10.231.50.254") in
-  let dst = (Ipaddr.V4.of_string_exn "215.231.0.1") in
-  let xl = (Ipaddr.V4.of_string_exn "4.4.4.4") in
+  let src = (ipv4_of_str "10.231.50.254") in
+  let dst = (ipv4_of_str "215.231.0.1") in
+  let xl = (ipv4_of_str "4.4.4.4") in
   let sport, dport, xlport = 40192,1024,45454 in
   let frame, table = basic_tcpv4 Source proto ttl src dst xl sport dport xlport in
   test_ipv4_rewriting src dst proto ttl frame;
@@ -225,9 +227,9 @@ sender to take care of *)
 
 let test_udp_ipv4_dst context =
   let proto = 17 in
-  let src = (Ipaddr.V4.of_string_exn "192.168.108.26") in
-  let dst = (Ipaddr.V4.of_string_exn "4.141.2.6") in
-  let xl = (Ipaddr.V4.of_string_exn "128.104.108.1") in
+  let src = (ipv4_of_str "192.168.108.26") in
+  let dst = (ipv4_of_str "4.141.2.6") in
+  let xl = (ipv4_of_str "128.104.108.1") in
   let sport, dport, xlport = 255, 1024, 45454 in
   let smac_addr = Macaddr.of_string_exn "00:16:3e:ff:00:ff" in
   let ttl = 38 in
@@ -300,10 +302,10 @@ let check_entry expected (actual : ((Ipaddr.t * int) * (Ipaddr.t * int)) option)
 
 let test_make_redirect_entry_valid_pkt context =
   let proto = 17 in
-  let internal_client = Ipaddr.V4.of_string_exn "172.16.2.30" in
-  let outside_requester = Ipaddr.V4.of_string_exn "1.2.3.4" in
-  let nat_external_ip = Ipaddr.V4.of_string_exn "208.121.103.4" in
-  let nat_internal_ip = Ipaddr.V4.of_string_exn "172.16.2.1" in
+  let internal_client = ipv4_of_str "172.16.2.30" in
+  let outside_requester = ipv4_of_str "1.2.3.4" in
+  let nat_external_ip = ipv4_of_str "208.121.103.4" in
+  let nat_internal_ip = ipv4_of_str "172.16.2.1" in
   let internal_client_port, outside_requester_port, 
       nat_external_port, nat_internal_port = 18787, 80, 80, 8989 in 
   let smac_addr = Macaddr.of_string_exn "00:16:3e:65:65:65" in
@@ -349,9 +351,8 @@ let test_make_redirect_entry_valid_pkt context =
 
 let test_make_nat_entry_valid_pkt context =
   let proto = 17 in
-  let src = Ipaddr.V4.of_string_exn "172.16.2.30" in
-  let dst = Ipaddr.V4.of_string_exn "1.2.3.4" in
-  let xl_ip = Ipaddr.V4.of_string_exn "172.16.0.1" in
+  let src, dst = ipv4_of_str "172.16.2.30", ipv4_of_str "1.2.3.4" in
+  let xl_ip = ipv4_of_str "172.16.0.1" in
   let sport, dport, xlport = 18787, 80, 10201 in
   let smac_addr = Macaddr.of_string_exn "00:16:3e:65:65:65" in
   let table = Nat_lookup.empty () in
@@ -379,13 +380,33 @@ let test_make_nat_entry_valid_pkt context =
       assert_failure "make_nat_entry claimed that a reference packet was unparseable"
     | Ok t -> assert_failure "make_nat_entry allowed a duplicate entry"
 
+let test_ethip_headers context =
+  let proto = 17 in
+  let src, dst = ipv4_of_str "172.16.2.30", ipv4_of_str "1.2.3.4" in
+  let xl_ip = ipv4_of_str "172.16.0.1" in
+  let sport, dport, xlport = 18787, 80, 10201 in
+  let smac_addr = Macaddr.of_string_exn "00:16:3e:65:65:65" in
+  let table = Nat_lookup.empty () in
+  let (frame, len) = basic_ipv4_frame proto src dst 52 smac_addr in
+  let (frame, len) = add_udp (frame, len) sport dport in
+  match Nat_rewrite.layers frame with
+  | None -> assert_failure "Nat_rewrite.layers couldn't get us close enough to
+  make any reasonable test assertions in the first place with ethip"
+  | Some (ethernet, ip, tx) ->
+    match Nat_rewrite.ethip_headers (ethernet, ip) with
+    | None -> assert_failure "ethip_headers couldn't extract headers from
+    totally reasonable ethernet, ip_layer"
+    | Some headers ->
+      assert_equal (Cstruct.sub frame 0 
+        (Wire_structs.sizeof_ethernet + Wire_structs.Ipv4_wire.sizeof_ipv4))
+        headers
+
 let test_make_nat_entry_nonsense context =
   (* sorts of bad packets: broadcast packets,
      non-tcp/udp/icmp packets *)
   let proto = 17 in
-  let src = Ipaddr.V4.of_string_exn "172.16.2.30" in
-  let dst = Ipaddr.V4.of_string_exn "1.2.3.4" in
-  let xl_ip = Ipaddr.V4.of_string_exn "172.16.0.1" in
+  let src, dst = ipv4_of_str "172.16.2.30", ipv4_of_str "1.2.3.4" in
+  let xl_ip = ipv4_of_str "172.16.0.1" in
   let xlport = 10201 in
   let smac_addr = Macaddr.of_string_exn "00:16:3e:65:65:65" in
   let frame_size = (Wire_structs.sizeof_ethernet + Wire_structs.Ipv4_wire.sizeof_ipv4) in
@@ -396,7 +417,7 @@ let test_make_nat_entry_nonsense context =
   in the table"
   | Ok t -> assert_failure "make_nat_entry happily took a mangled packet"
   | Unparseable ->
-    let broadcast_dst = Ipaddr.V4.of_string_exn "255.255.255.255" in
+    let broadcast_dst = ipv4_of_str "255.255.255.255" in
     let sport = 45454 in
     let dport = 80 in
     let broadcast, _ = add_tcp (basic_ipv4_frame 6 src broadcast_dst 30 smac_addr)
@@ -433,7 +454,8 @@ let suite = "test-rewrite" >:::
               "make_nat_entry refuses nonsense frames" >::
               test_make_nat_entry_nonsense;
               "make_redirect_entry makes entries" >::
-              test_make_redirect_entry_valid_pkt
+              test_make_redirect_entry_valid_pkt;
+"ethip_headers is sane" >:: test_ethip_headers
             ]
 
 let () =
