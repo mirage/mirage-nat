@@ -55,7 +55,6 @@ let insert ?(mode=Nat) table proto left right translate_left translate_right =
     mappings mode 
   in
   (* TODO: this is subject to race conditions *)
-  (* needs Lwt.join *)
   match (mem table internal_lookup, mem table external_lookup) with
   | false, false ->
     add table internal_lookup internal_mapping;

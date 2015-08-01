@@ -389,11 +389,11 @@ let test_ethip_headers context =
   let table = Nat_lookup.empty () in
   let (frame, len) = basic_ipv4_frame proto src dst 52 smac_addr in
   let (frame, len) = add_udp (frame, len) sport dport in
-  match Nat_rewrite.layers frame with
-  | None -> assert_failure "Nat_rewrite.layers couldn't get us close enough to
+  match Nat_decompose.layers frame with
+  | None -> assert_failure "Nat_decompose.layers couldn't get us close enough to
   make any reasonable test assertions in the first place with ethip"
   | Some (ethernet, ip, tx) ->
-    match Nat_rewrite.ethip_headers (ethernet, ip) with
+    match Nat_decompose.ethip_headers (ethernet, ip) with
     | None -> assert_failure "ethip_headers couldn't extract headers from
     totally reasonable ethernet, ip_layer"
     | Some headers ->
