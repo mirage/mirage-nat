@@ -1,9 +1,9 @@
-(* TODO: what are the actual data types on these?  no explicit
+(* TODO: what are the data types on protocol numbers?  no explicit
 types in tcpip/lib/ipv4.ml, just matches on the number
 straight from the struct, so we'll do that too although we
    should instead restrict to tcp or udp *) 
 
-(* TODO: types should actually be more complex and allow for entries mapping
+(* TODO: types should be more complex and allow for entries mapping
   networks and port ranges (with internal logic disallowing many:many mappings)
 *)
 type protocol = int
