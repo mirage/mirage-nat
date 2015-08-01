@@ -1,5 +1,6 @@
 type protocol = int
 type port = int
+type endpoint = (Ipaddr.t * port)
 type t 
 
 type mode =

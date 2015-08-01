@@ -8,8 +8,10 @@ straight from the struct, so we'll do that too although we
 *)
 type protocol = int
 type port = int (* TODO: should probably formalize that this is uint16 *)
-type t = (protocol * (Ipaddr.t * port) * (Ipaddr.t * port),
-          ((Ipaddr.t * port) * (Ipaddr.t * port))) Hashtbl.t
+type endpoint = (Ipaddr.t * port)
+type t = (protocol * endpoint * endpoint,
+          (endpoint * endpoint)) Hashtbl.t
+
 type mode =
   | Redirect
   | Nat
