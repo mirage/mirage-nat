@@ -3,6 +3,7 @@ type protocol = int
 type ethernet
 type ip
 type transport
+type payload
 
 (* given an ip packet, fish out the src and dst ip *)
 val addresses_of_ip : ip layer -> (Ipaddr.t * Ipaddr.t)
@@ -25,7 +26,8 @@ val payload_of_transport : protocol -> Cstruct.t -> Cstruct.t option
    each cstruct maintains a view into those above it (i.e., the
    ethernet cstruct's length is not set to the length of the ethernet header).
 *)
-val layers : Cstruct.t -> (ethernet layer * ip layer * transport layer) option
+val layers : Cstruct.t ->
+  (ethernet layer * ip layer * transport layer * payload layer) option
 
 (* given an ethernet layer with some space for payload and a desired ip payload,
    do some sanity checking and potentially give back a packet ready for

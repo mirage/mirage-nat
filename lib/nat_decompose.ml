@@ -1,7 +1,9 @@
 type 'a layer = Cstruct.t
+type protocol = int
 type ethernet
 type ip
 type transport
+type payload
 
 open Nat_shims
 
@@ -70,6 +72,21 @@ let transport_and_above_of_ip ip =
       else
         Some (Cstruct.shift ip n)
 
+let payload_of_transport proto tx =
+  match proto with
+  | 6 ->
+    if (Cstruct.len tx < Wire_structs.Tcp_wire.sizeof_tcp) then None else begin
+      let word_offset = Wire_structs.Tcp_wire.get_tcp_dataoff tx in
+      let byte_offset = word_offset * 4 in
+      if (Cstruct.len tx < byte_offset) then None
+      else Some (Cstruct.shift tx byte_offset)
+    end
+  | 17 ->
+    (* UDP isn't variable-length, so things are much simpler *)
+    if (Cstruct.len tx < Wire_structs.sizeof_udp) then None
+    else Some (Cstruct.shift tx (Wire_structs.sizeof_udp))
+  | _ -> None
+
 let ports_of_transport tx_layer =
   ((Wire_structs.get_udp_source_port tx_layer : int),
    (Wire_structs.get_udp_dest_port tx_layer : int))
@@ -82,13 +99,13 @@ let ethip_headers (e, i) =
   | None | Some _ -> None
 
 let layers frame =
-  let bind f x y =
-    match (f x) with
+  match ip_and_above_of_frame frame with
+  | None -> None
+  | Some ip ->
+    match transport_and_above_of_ip ip with
     | None -> None
-    | Some q -> y q
-  in
-  match (ip_and_above_of_frame frame,
-         bind ip_and_above_of_frame frame
-           transport_and_above_of_ip) with
-  | Some ip, Some tx -> Some (frame, ip, tx)
-  | _, _ -> None
+    | Some tx ->
+      let proto = proto_of_ip ip in
+      match payload_of_transport proto tx with
+      | None -> None
+      | Some payload -> Some (frame, ip, tx, payload)
