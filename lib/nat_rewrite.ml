@@ -85,6 +85,21 @@ let translate table direction frame =
 let make_entry mode table frame
     (other_xl_ip, other_xl_port)
     (final_destination_ip, final_destination_port) =
+  let mappings ~mode ~proto ~left ~right ~translate_left ~translate_right =
+    match mode with
+    | Nat ->
+      let internal_lookup = (left, right) in
+      let external_lookup = (right, translate_left) in
+      let internal_mapping = (translate_left, right) in
+      let external_mapping = (right, left) in
+      (internal_lookup, external_lookup, internal_mapping, external_mapping)
+    | Redirect ->
+      let internal_lookup = (left, translate_left) in
+      let external_lookup = (right, translate_right) in
+      let internal_mapping = (translate_right, right) in
+      let external_mapping = (translate_left, left) in
+      (internal_lookup, external_lookup, internal_mapping, external_mapping)
+  in
   (* decompose this frame; if we can't, bail out now *)
   match Nat_decompose.layers frame with
   | None -> Unparseable
@@ -100,27 +115,21 @@ let make_entry mode table frame
     (* only Organization and Global scope IPs get routed *)
     match check_scope frame_src_ip, check_scope frame_dst_ip with
     | true, true -> (
-        let t =
-          match (mode : Nat_lookup.mode) with
+        let entries = match mode with
           | Nat ->
-            Nat_lookup.insert ~mode:Nat table proto
-              (frame_src_ip, frame_sport) (frame_dst_ip, frame_dport)
-              (other_xl_ip, other_xl_port) (other_xl_ip, other_xl_port)
+            mappings ~mode:Nat ~proto
+              ~left:(frame_src_ip, frame_sport)
+              ~right:(frame_dst_ip, frame_dport)
+              ~translate_left:(other_xl_ip, other_xl_port)
+              ~translate_right:(other_xl_ip, other_xl_port)
           | Redirect ->
-            (* in redirect mode, frame_src_ip and frame_dst_ip aren't what we're expecting --
-               the packet actually addressed to one of the xl ip/port pairs,
-               and the next hop is sent to us in the arguments for this
-               function. *)
-
-            (* left side, right side, internal_xl, external_xl *)
-            Nat_lookup.insert ~mode:Redirect table proto
-              (frame_src_ip, frame_sport)
-              (final_destination_ip, final_destination_port)
-              (frame_dst_ip, frame_dport)
-              (other_xl_ip, other_xl_port)
-
+            mappings ~mode:Redirect ~proto
+              ~left:(frame_src_ip, frame_sport)
+              ~right:(final_destination_ip, final_destination_port)
+              ~translate_left:(frame_dst_ip, frame_dport)
+              ~translate_right:(other_xl_ip, other_xl_port)
         in
-        match t with
+        match Nat_lookup.insert table proto entries with
         | Some t -> Ok t
         | None -> Overlap
       )
