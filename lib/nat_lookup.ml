@@ -43,7 +43,7 @@ let lookup table proto ~source ~destination =
    but there may in the future be more state associated with these entries that
    then should be updated) *)
 let insert table proto
-    (internal_lookup, external_lookup, internal_mapping, external_mapping) =
+    ~internal_lookup ~external_lookup ~internal_mapping ~external_mapping =
   let protofy proto (src, dst) = (proto, src, dst) in
   let check proto (src, dst) = Hashtbl.mem table (protofy proto (src, dst)) in
   match (check proto internal_lookup, check proto external_lookup) with
