@@ -1,14 +1,14 @@
 (* TODO: what are the data types on protocol numbers?  no explicit
 types in tcpip/lib/ipv4.ml, just matches on the number
 straight from the struct, so we'll do that too although we
-   should instead restrict to tcp or udp *) 
+   should instead restrict to tcp or udp *)
 
 (* TODO: types should be more complex and allow for entries mapping
   networks and port ranges (with internal logic disallowing many:many mappings)
 *)
 type protocol = int
 type port = int (* TODO: should probably formalize that this is uint16 *)
-type t = (protocol * (Ipaddr.t * port) * (Ipaddr.t * port), 
+type t = (protocol * (Ipaddr.t * port) * (Ipaddr.t * port),
           ((Ipaddr.t * port) * (Ipaddr.t * port))) Hashtbl.t
 type mode =
   | Redirect
@@ -19,9 +19,9 @@ let string_of_t (table : t) =
     Printf.sprintf "addr %s , port %d (%x) " (Ipaddr.to_string addr) port port
   in
   Hashtbl.fold (
-    fun (proto, left, right) answer str -> 
+    fun (proto, left, right) answer str ->
       Printf.sprintf "%s proto %d (%x): %s, %s -> %s, %s\n" str
-        proto proto (print_pair left) (print_pair right) 
+        proto proto (print_pair left) (print_pair right)
         (print_pair (fst answer)) (print_pair (snd answer))
   ) table ""
 
@@ -30,7 +30,7 @@ let lookup table proto left right =
   | false -> None
   | true -> Some (Hashtbl.find table (proto, left, right))
 
-(* cases that should result in a valid mapping: 
+(* cases that should result in a valid mapping:
    neither side is already mapped
    both sides are already mapped to each other (currently this would be a noop,
 but there may in the future be more state associated with these entries that
@@ -52,7 +52,7 @@ let insert ?(mode=Nat) table proto left right translate_left translate_right =
       (internal_lookup, external_lookup, internal_mapping, external_mapping)
   in
   let (internal_lookup, external_lookup, internal_mapping, external_mapping) =
-    mappings mode 
+    mappings mode
   in
   (* TODO: this is subject to race conditions *)
   match (mem table internal_lookup, mem table external_lookup) with
@@ -78,4 +78,4 @@ let delete table proto (left_ip, left_port) (right_ip, right_port)
 (* TODO: if we do continue with this structure, this number should almost
   certainly be bigger *)
 let empty () = Hashtbl.create 200
-  
+
