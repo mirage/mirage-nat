@@ -1,6 +1,7 @@
 PKG mirage-types
 PKG tcpip
 PKG ipaddr
+PKG oUnit
 S lib
 S lib_test
 B _build/lib
