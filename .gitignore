@@ -1,5 +1,6 @@
 *.byte
 setup.data
+setup.log
 opam/
 log/
 _build
