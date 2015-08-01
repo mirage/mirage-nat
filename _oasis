@@ -15,7 +15,7 @@ Flag randomized
 
 Library "mirage-nat"
   Path: lib
-  Modules: Nat_lookup, Nat_rewrite
+  Modules: Nat_lookup, Nat_rewrite, Nat_decompose, Nat_shims
   BuildDepends: ipaddr, tcpip, cstruct
 
 Executable randomized_tests
