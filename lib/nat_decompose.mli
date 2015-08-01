@@ -1,4 +1,5 @@
 type 'a layer = Cstruct.t
+type protocol = int
 type ethernet
 type ip
 type transport
@@ -7,14 +8,21 @@ type transport
 val addresses_of_ip : ip layer -> (Ipaddr.t * Ipaddr.t)
 
 (* given an ip packet, fish out the transport-layer protocol number *)
-val proto_of_ip : ip layer -> int
+val proto_of_ip : ip layer -> protocol
 
 (* given a transport-layer packet, fish out the transport-layer source and
    destination ports *)
 val ports_of_transport : transport layer -> (int * int)
 
-(* attempt to decompose a frame into Cstructs representing the ethernet, ip, and
-  tx layers.  each cstruct maintains a view into those above it (i.e., the
+val ip_and_above_of_frame : Cstruct.t -> Cstruct.t option
+
+val transport_and_above_of_ip : Cstruct.t -> Cstruct.t option
+
+val payload_of_transport : protocol -> Cstruct.t -> Cstruct.t option
+
+(* attempt to decompose a frame into Cstructs representing the ethernet, ip,
+   tx, and payload (potentially empty) layers.
+   each cstruct maintains a view into those above it (i.e., the
    ethernet cstruct's length is not set to the length of the ethernet header).
 *)
 val layers : Cstruct.t -> (ethernet layer * ip layer * transport layer) option
