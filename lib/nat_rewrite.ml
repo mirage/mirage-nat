@@ -40,14 +40,14 @@ let translate table direction frame =
      will be sending packets via IP.write, which itself calculates and inserts
      the proper checksum before sending the packet. *)
   let recalculate_ip_checksum ip_layer size =
-    Wire_structs.Ipv4_wire.set_ipv4_csum ip_layer 0;
+    Wire_structs.Ipv4_wire.set_ipv4_csum ip_layer 0; (*
     let just_ipv4 = Cstruct.sub ip_layer 0 size in
     let new_csum = Tcpip_checksum.ones_complement just_ipv4 in
-    Wire_structs.Ipv4_wire.set_ipv4_csum ip_layer new_csum
+    Wire_structs.Ipv4_wire.set_ipv4_csum ip_layer new_csum *)
   in
   match (Nat_decompose.layers frame) with
   | None -> None (* un-NATtable packet; drop it like it's hot *)
-  | Some (frame, ip_packet, higherproto_packet) ->
+  | Some (frame, ip_packet, higherproto_packet, _payload) ->
     match (Nat_decompose.addresses_of_ip ip_packet) with
     | (V4 src, V4 dst) -> (* ipv4 *) (
         let (proto : int) = Nat_decompose.proto_of_ip ip_packet in
@@ -85,25 +85,10 @@ let translate table direction frame =
 let make_entry mode table frame
     (other_xl_ip, other_xl_port)
     (final_destination_ip, final_destination_port) =
-  let mappings ~mode ~proto ~left ~right ~translate_left ~translate_right =
-    match mode with
-    | Nat ->
-      let internal_lookup = (left, right) in
-      let external_lookup = (right, translate_left) in
-      let internal_mapping = (translate_left, right) in
-      let external_mapping = (right, left) in
-      (internal_lookup, external_lookup, internal_mapping, external_mapping)
-    | Redirect ->
-      let internal_lookup = (left, translate_left) in
-      let external_lookup = (right, translate_right) in
-      let internal_mapping = (translate_right, right) in
-      let external_mapping = (translate_left, left) in
-      (internal_lookup, external_lookup, internal_mapping, external_mapping)
-  in
   (* decompose this frame; if we can't, bail out now *)
   match Nat_decompose.layers frame with
   | None -> Unparseable
-  | Some (frame, ip_layer, tx_layer) ->
+  | Some (frame, ip_layer, tx_layer, _payload) ->
     let proto = Nat_decompose.proto_of_ip ip_layer in
     let check_scope ip =
       match Ipaddr.scope ip with
@@ -115,21 +100,26 @@ let make_entry mode table frame
     (* only Organization and Global scope IPs get routed *)
     match check_scope frame_src_ip, check_scope frame_dst_ip with
     | true, true -> (
+        let open Nat_translations in
         let entries = match mode with
           | Nat ->
-            mappings ~mode:Nat ~proto
+            map_nat
               ~left:(frame_src_ip, frame_sport)
               ~right:(frame_dst_ip, frame_dport)
               ~translate_left:(other_xl_ip, other_xl_port)
-              ~translate_right:(other_xl_ip, other_xl_port)
           | Redirect ->
-            mappings ~mode:Redirect ~proto
+            map_redirect
               ~left:(frame_src_ip, frame_sport)
               ~right:(final_destination_ip, final_destination_port)
               ~translate_left:(frame_dst_ip, frame_dport)
               ~translate_right:(other_xl_ip, other_xl_port)
         in
-        match Nat_lookup.insert table proto entries with
+        match Nat_lookup.insert table proto
+                ~internal_lookup:entries.internal_lookup
+                ~external_lookup:entries.external_lookup
+                ~internal_mapping:entries.internal_mapping
+                ~external_mapping:entries.external_mapping
+        with
         | Some t -> Ok t
         | None -> Overlap
       )
