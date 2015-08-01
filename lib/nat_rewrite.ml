@@ -21,7 +21,6 @@ let rewrite_ip is_ipv6 (ip_layer : Cstruct.t) direction i =
   | false, _, (V4 new_src, V4 new_dst) ->
     Wire_structs.Ipv4_wire.set_ipv4_src ip_layer (Ipaddr.V4.to_int32 new_src);
     Wire_structs.Ipv4_wire.set_ipv4_dst ip_layer (Ipaddr.V4.to_int32 new_dst)
-  (* TODO: every other case *)
   | _, _, _ -> raise (Failure "ipv4-ipv4 is the only implemented case")
 
 let rewrite_port (txlayer : Cstruct.t) direction (sport, dport) =
@@ -139,8 +138,7 @@ let make_redirect_entry table frame
 let make_nat_entry table frame xl_ip xl_port =
   make_entry (Nat : Nat_lookup.mode) table frame (xl_ip, xl_port) (xl_ip, xl_port)
 
-let recalculate_transport_checksum csum_fn (ethernet, ip_layer,
-                                            transport_layer) =
+let recalculate_transport_checksum csum_fn (ethernet, ip_layer, transport_layer) =
   match Nat_decompose.ethip_headers (ethernet, ip_layer) with
   | None -> raise (Invalid_argument 
                      "Could not recalculate transport-layer checksum after NAT rewrite")
@@ -154,8 +152,7 @@ let recalculate_transport_checksum csum_fn (ethernet, ip_layer,
     let () = match Nat_decompose.proto_of_ip ip_layer with
       | 17 -> fix_checksum Wire_structs.set_udp_checksum ip_layer transport_layer 
       | 6 ->
-        fix_checksum Wire_structs.Tcp_wire.set_tcp_checksum ip_layer
-          transport_layer
+        fix_checksum Wire_structs.Tcp_wire.set_tcp_checksum ip_layer transport_layer
       | _ -> ()
     in
     (just_headers, transport_layer)
