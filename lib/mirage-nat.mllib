@@ -1,8 +1,9 @@
 # OASIS_START
-# DO NOT EDIT (digest: c452be258f77fbe9bd56b7a4881b1954)
+# DO NOT EDIT (digest: a6693be375f0205415e3565338d736df)
 Nat_lookup
 Nat_rewrite
 Nat_translations
 Nat_decompose
 Nat_shims
+Nat_table
 # OASIS_STOP
