@@ -2,6 +2,10 @@ PKG mirage-types
 PKG tcpip
 PKG ipaddr
 PKG oUnit
+PKG irmin-network-datastores
+PKG sexplib
+PKG type_conv
+PKG sexplib.syntax
 S lib
 S lib_test
 B _build/lib
