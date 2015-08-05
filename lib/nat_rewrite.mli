@@ -12,7 +12,7 @@ type insert_result =
   * on the Cstruct.t .  If the packet should be forwarded, return Some packet,
   * else return None.  
   * This function is zero-copy and mutates values in the given Cstruct.  *)
-val translate : Nat_lookup.t -> direction -> Cstruct.t -> Cstruct.t option
+val translate : Nat_lookup.t -> direction -> Cstruct.t -> Cstruct.t option Lwt.t
 
 (** given a table, a frame, and a translation IP and port,
   * put relevant entries for the (src_ip, src_port), (dst_ip, dst_port) from the
@@ -24,7 +24,8 @@ val translate : Nat_lookup.t -> direction -> Cstruct.t -> Cstruct.t option
        (dst_ip, dst_port), (src_ip, src_port)).
   * if insertion succeeded, return the new table;
   * otherwise, return an error type indicating the problem. *)
-val make_nat_entry : Nat_lookup.t -> Cstruct.t -> Ipaddr.t -> int -> insert_result
+val make_nat_entry : Nat_lookup.t -> Cstruct.t -> Ipaddr.t -> int ->
+  insert_result Lwt.t
 
 (** given a table, a frame from which (src_ip, src_port) and (xl_left_ip,
     xl_left_port) can be extracted (these are source and destination for the
@@ -38,7 +39,7 @@ val make_nat_entry : Nat_lookup.t -> Cstruct.t -> Ipaddr.t -> int -> insert_resu
   * if insertion succeeded, return the new table;
   * otherwise, return an error type indicating the problem. *)
 val make_redirect_entry : Nat_lookup.t -> Cstruct.t -> (Ipaddr.t * int) 
-  -> (Ipaddr.t * int) -> insert_result
+  -> (Ipaddr.t * int) -> insert_result Lwt.t
 
 (* phantom types for Cstructs, so type system can help us keep them straight *)
 type transport

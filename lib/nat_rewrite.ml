@@ -13,6 +13,8 @@ type insert_result =
   | Overlap
   | Unparseable
 
+let (>>=) = Lwt.bind
+
 let rewrite_ip is_ipv6 (ip_layer : Cstruct.t) direction i =
   (* TODO: this is not the right set of parameters for a function that might
      have to do 6-to-4 translation *)
@@ -27,6 +29,11 @@ let rewrite_port (txlayer : Cstruct.t) direction (sport, dport) =
   Wire_structs.set_udp_source_port txlayer sport;
   Wire_structs.set_udp_dest_port txlayer dport
 
+let protofy num = match num with
+  | 6 -> Some Tcp
+  | 17 -> Some Udp
+  | _ -> None
+
 let translate table direction frame =
   (* note that ethif.input doesn't have the same register-listeners-then-input
      format that tcp/udp do, so we could use it for the outer layer of parsing *)
@@ -39,25 +46,26 @@ let translate table direction frame =
      will be sending packets via IP.write, which itself calculates and inserts
      the proper checksum before sending the packet. *)
   let recalculate_ip_checksum ip_layer size =
-    Wire_structs.Ipv4_wire.set_ipv4_csum ip_layer 0; (*
+    Wire_structs.Ipv4_wire.set_ipv4_csum ip_layer 0;
     let just_ipv4 = Cstruct.sub ip_layer 0 size in
     let new_csum = Tcpip_checksum.ones_complement just_ipv4 in
-    Wire_structs.Ipv4_wire.set_ipv4_csum ip_layer new_csum *)
+    Wire_structs.Ipv4_wire.set_ipv4_csum ip_layer new_csum
   in
-  match (Nat_decompose.layers frame) with
-  | None -> None (* un-NATtable packet; drop it like it's hot *)
+  match Nat_decompose.layers frame with
+  | None -> Lwt.return None (* un-NATtable packet; drop it like it's hot *)
   | Some (frame, ip_packet, higherproto_packet, _payload) ->
     match (Nat_decompose.addresses_of_ip ip_packet) with
-    | (V4 src, V4 dst) -> (* ipv4 *) (
-        let (proto : int) = Nat_decompose.proto_of_ip ip_packet in
-        match proto with
-        | 6 | 17 -> (
+    | (V4 src, V6 dst) -> Lwt.return None (* impossible! *)
+    | (V6 src, V4 dst) -> Lwt.return None (* impossible! *)
+    | (V6 src, V6 dst) -> Lwt.return None (* TODO, obviously *)
+    | (V4 src, V4 dst) ->
+        match protofy (Nat_decompose.proto_of_ip ip_packet) with
+        | None -> Lwt.return None (* TODO: don't just drop all non-udp, non-tcp packets *)
+        | Some proto ->
             let (sport, dport) = Nat_decompose.ports_of_transport higherproto_packet in
             (* got everything; do the lookup *)
-            let result = Nat_lookup.lookup table proto ((V4 src), sport) ((V4 dst), dport)
-            in
-            match result with
-            | None -> None (* don't autocreate new entries *)
+            Nat_lookup.lookup table proto ((V4 src), sport) ((V4 dst), dport) >>= function
+            | None -> Lwt.return None (* don't autocreate new entries *)
             | Some ((V4 new_src, new_sport), (V4 new_dst, new_dport)) ->
               (* TODO: we should probably refuse to pass TTL = 0 and instead send an
                  ICMP message back to the sender *)
@@ -66,29 +74,26 @@ let translate table direction frame =
               decrement_ttl ip_packet;
               recalculate_ip_checksum ip_packet  
                 ((Cstruct.len ip_packet) - (Cstruct.len higherproto_packet));
-              Some frame
+              Lwt.return (Some frame)
 
             (* TODO: 4-to-6 logic *)
-            | Some ((V6 new_src, new_sport), (V6 new_dst, new_dport)) -> None
+            | Some ((V6 new_src, new_sport), (V6 new_dst, new_dport)) ->
+              Lwt.return None
             | Some ((V6 _, _), (V4 _, _)) ->
               raise (Invalid_argument "Impossible transformation in NAT
                                          table (src ipv6, dst ipv4)")
             | Some ((V4 _, _), (V6 _, _)) ->
               raise (Invalid_argument "Impossible transformation in NAT
                                          table (src ipv4, dst ipv6)")
-          )
-        | _ -> None (* TODO: don't just drop all non-udp, non-tcp packets *)
-      )
-    | (V6 src, V6 dst) -> None (* TODO, obviously *) (* ipv6 *)
 
 let make_entry mode table frame
     (other_xl_ip, other_xl_port)
     (final_destination_ip, final_destination_port) =
   (* decompose this frame; if we can't, bail out now *)
   match Nat_decompose.layers frame with
-  | None -> Unparseable
+  | None -> Lwt.return Unparseable
   | Some (frame, ip_layer, tx_layer, _payload) ->
-    let proto = Nat_decompose.proto_of_ip ip_layer in
+    let proto = protofy (Nat_decompose.proto_of_ip ip_layer) in
     let check_scope ip =
       match Ipaddr.scope ip with
       | Global | Organization -> true
@@ -96,9 +101,9 @@ let make_entry mode table frame
     in
     let (frame_src_ip, frame_dst_ip) = Nat_decompose.addresses_of_ip ip_layer in
     let (frame_sport, frame_dport) = Nat_decompose.ports_of_transport tx_layer in
-    (* only Organization and Global scope IPs get routed *)
-    match check_scope frame_src_ip, check_scope frame_dst_ip with
-    | true, true -> (
+    (* only Organization and Global scope IPs and UDP/TCP tx layer get routed *)
+    match proto, check_scope frame_src_ip, check_scope frame_dst_ip with
+    | Some proto, true, true -> (
         let open Nat_translations in
         let entries = match mode with
           | Nat ->
@@ -113,16 +118,18 @@ let make_entry mode table frame
               ~translate_left:(frame_dst_ip, frame_dport)
               ~translate_right:(other_xl_ip, other_xl_port)
         in
-        match Nat_lookup.insert table proto
+        (* TODO: for now, set all expirations to 0 and never expire or check
+           expiry on anything *)
+        Nat_lookup.insert table 0. proto
                 ~internal_lookup:entries.internal_lookup
                 ~external_lookup:entries.external_lookup
                 ~internal_mapping:entries.internal_mapping
                 ~external_mapping:entries.external_mapping
-        with
-        | Some t -> Ok t
-        | None -> Overlap
+        >>= function
+        | Some t -> Lwt.return (Ok t)
+        | None -> Lwt.return Overlap
       )
-    | _, _ -> Unparseable
+    | _, _, _ -> Lwt.return Unparseable
 
 (* the frame is addressed to one of our IPs.  We should rewrite the source with
    the IP of our other interface, along with a randomized port. *)
