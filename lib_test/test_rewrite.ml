@@ -1,304 +1,221 @@
 open OUnit2
 open Ipaddr
 open Nat_rewrite
+open Nat_decompose
 
 let zero_cstruct cs =
-  let zero c = Cstruct.set_char c 0 '\000' in
-  let i = Cstruct.iter (fun c -> Some 1) zero cs in
-  Cstruct.fold (fun b a -> b) i cs
+  Cstruct.memset cs 0;
+  cs
 
 let ipv4_of_str = Ipaddr.V4.of_string_exn
 
-let ip_and_above_of_frame frame =
-  match (Wire_structs.get_ethernet_ethertype frame) with
-  | 0x0800 | 0x86dd -> Cstruct.shift frame Wire_structs.sizeof_ethernet
-  | _ -> assert_failure "tried to get ip layer of non-ip frame"
+module Constructors = struct
 
-let transport_and_above_of_ip ip =
-  let hlen_version = Wire_structs.Ipv4_wire.get_ipv4_hlen_version ip in
-  match ((hlen_version land 0xf0) lsr 4) with
-  | 4 -> (* length (in words, not bytes) is in the other half of hlen_version *)
-    Cstruct.shift ip ((hlen_version land 0x0f) * 4)
-  | 6 -> (* ipv6 is a constant length *)
-    Cstruct.shift ip Wire_structs.Ipv6_wire.sizeof_ipv6
-  | n ->
-    let err =
-      (Printf.sprintf
-         "tried to get transport layer of a non-ip frame (hlen/vers %x) " n)
-    in
-    assert_failure err
+  let basic_ipv4_frame ?(frame_size=1024) proto src dst ttl smac_addr =
+    let ethernet_frame = zero_cstruct (Cstruct.create frame_size) in
+    let ethernet_frame = Cstruct.set_len ethernet_frame
+        (Wire_structs.sizeof_ethernet + Wire_structs.Ipv4_wire.sizeof_ipv4) in
+    Wire_structs.set_ethernet_src (Macaddr.to_bytes smac_addr) 0 ethernet_frame;
+    Wire_structs.set_ethernet_ethertype ethernet_frame 0x0800;
+    match ip_and_above_of_frame ethernet_frame with
+    | None -> OUnit.assert_failure "failure constructing test frame"
+    | Some buf ->
+      (* Write the constant IPv4 header fields *)
+      Wire_structs.Ipv4_wire.set_ipv4_hlen_version buf ((4 lsl 4) + (5));
+      Wire_structs.Ipv4_wire.set_ipv4_tos buf 0;
+      Wire_structs.Ipv4_wire.set_ipv4_off buf 0;
+      Wire_structs.Ipv4_wire.set_ipv4_ttl buf ttl;
+      Wire_structs.Ipv4_wire.set_ipv4_proto buf proto;
+      Wire_structs.Ipv4_wire.set_ipv4_src buf (Ipaddr.V4.to_int32 src); (* altered *)
+      Wire_structs.Ipv4_wire.set_ipv4_dst buf (Ipaddr.V4.to_int32 dst);
+      Wire_structs.Ipv4_wire.set_ipv4_id buf 0x4142;
+      let len = Wire_structs.sizeof_ethernet + Wire_structs.Ipv4_wire.sizeof_ipv4 in
+      (ethernet_frame, len)
 
-let basic_ipv4_frame ?(frame_size=1024) proto src dst ttl smac_addr =
-  let ethernet_frame = zero_cstruct (Cstruct.create frame_size) in (* altered *)
-  let ethernet_frame = Cstruct.set_len ethernet_frame
-      (Wire_structs.sizeof_ethernet + Wire_structs.Ipv4_wire.sizeof_ipv4) in
-  let smac = Macaddr.to_bytes smac_addr in (* altered *)
-  Wire_structs.set_ethernet_src smac 0 ethernet_frame;
-  Wire_structs.set_ethernet_ethertype ethernet_frame 0x0800;
-  let buf = ip_and_above_of_frame ethernet_frame in
-  (* Write the constant IPv4 header fields *)
-  Wire_structs.Ipv4_wire.set_ipv4_hlen_version buf ((4 lsl 4) + (5));
-  Wire_structs.Ipv4_wire.set_ipv4_tos buf 0;
-  Wire_structs.Ipv4_wire.set_ipv4_off buf 0;
-  Wire_structs.Ipv4_wire.set_ipv4_ttl buf ttl;
-  Wire_structs.Ipv4_wire.set_ipv4_proto buf proto;
-  Wire_structs.Ipv4_wire.set_ipv4_src buf (Ipaddr.V4.to_int32 src); (* altered *)
-  Wire_structs.Ipv4_wire.set_ipv4_dst buf (Ipaddr.V4.to_int32 dst);
-  Wire_structs.Ipv4_wire.set_ipv4_id buf 0x4142;
-  let len = Wire_structs.sizeof_ethernet + Wire_structs.Ipv4_wire.sizeof_ipv4 in
-  (ethernet_frame, len)
+  let basic_ipv6_frame proto src dst ttl smac_addr =
+    let ethernet_frame = zero_cstruct (Cstruct.create
+                                         (Wire_structs.sizeof_ethernet +
+                                          Wire_structs.Ipv6_wire.sizeof_ipv6)) in
+    let smac = Macaddr.to_bytes smac_addr in
+    Wire_structs.set_ethernet_src smac 0 ethernet_frame;
+    Wire_structs.set_ethernet_ethertype ethernet_frame 0x86dd;
+    match ip_and_above_of_frame ethernet_frame with
+    | None -> OUnit.assert_failure "failure constructing test frame"
+    | Some ip_layer ->
+      Wire_structs.Ipv6_wire.set_ipv6_version_flow ip_layer 0x60000000l;
+      Wire_structs.Ipv6_wire.set_ipv6_src (Ipaddr.V6.to_bytes src) 0 ip_layer;
+      Wire_structs.Ipv6_wire.set_ipv6_dst (Ipaddr.V6.to_bytes dst) 0 ip_layer;
+      Wire_structs.Ipv6_wire.set_ipv6_nhdr ip_layer proto;
+      Wire_structs.Ipv6_wire.set_ipv6_hlim ip_layer ttl;
+      let len = Wire_structs.sizeof_ethernet + Wire_structs.Ipv6_wire.sizeof_ipv6 in
+      (ethernet_frame, len)
 
-let basic_ipv6_frame proto src dst ttl smac_addr =
-  let ethernet_frame = zero_cstruct (Cstruct.create
-                                       (Wire_structs.sizeof_ethernet +
-                                        Wire_structs.Ipv6_wire.sizeof_ipv6)) in
-  let smac = Macaddr.to_bytes smac_addr in
-  Wire_structs.set_ethernet_src smac 0 ethernet_frame;
-  Wire_structs.set_ethernet_ethertype ethernet_frame 0x86dd;
-  let ip_layer = ip_and_above_of_frame ethernet_frame in
-  Wire_structs.Ipv6_wire.set_ipv6_version_flow ip_layer 0x60000000l;
-  Wire_structs.Ipv6_wire.set_ipv6_src (Ipaddr.V6.to_bytes src) 0 ip_layer;
-  Wire_structs.Ipv6_wire.set_ipv6_dst (Ipaddr.V6.to_bytes dst) 0 ip_layer;
-  Wire_structs.Ipv6_wire.set_ipv6_nhdr ip_layer proto;
-  Wire_structs.Ipv6_wire.set_ipv6_hlim ip_layer ttl;
-  let len = Wire_structs.sizeof_ethernet + Wire_structs.Ipv6_wire.sizeof_ipv6 in
-  (ethernet_frame, len)
+  let add_tcp (frame, len) source_port dest_port =
+    let open Wire_structs.Tcp_wire in
+    let frame = Cstruct.set_len frame (len + Wire_structs.Tcp_wire.sizeof_tcp) in
+    let tcp_buf = Cstruct.shift frame len in
+    set_tcp_src_port tcp_buf source_port;
+    set_tcp_dst_port tcp_buf dest_port;
+    (* for now, all tcp packets have syn set & have a consistent seq # *)
+    (* they also don't have options *)
+    set_tcp_sequence tcp_buf (Int32.of_int 0x432af310);
+    set_tcp_ack_number tcp_buf Int32.zero;
+    set_tcp_dataoff tcp_buf 5;
+    set_tcp_flags tcp_buf 2; (* syn *)
+    set_tcp_window tcp_buf 536; (* default_mss from tcp/window.ml *)
+    (* leave checksum and urgent pointer unset *)
+    (frame, len + sizeof_tcp)
 
-let add_tcp (frame, len) source_port dest_port =
-  let frame = Cstruct.set_len frame (len + Wire_structs.Tcp_wire.sizeof_tcp) in
-  let tcp_buf = Cstruct.shift frame len in
-  Wire_structs.Tcp_wire.set_tcp_src_port tcp_buf source_port;
-  Wire_structs.Tcp_wire.set_tcp_dst_port tcp_buf dest_port;
-  (* for now, all tcp packets have syn set & have a consistent seq # *)
-  (* they also don't have options *)
-  Wire_structs.Tcp_wire.set_tcp_sequence tcp_buf (Int32.of_int 0x432af310);
-  Wire_structs.Tcp_wire.set_tcp_ack_number tcp_buf Int32.zero;
-  Wire_structs.Tcp_wire.set_tcp_dataoff tcp_buf 5;
-  Wire_structs.Tcp_wire.set_tcp_flags tcp_buf 2; (* syn *)
-  Wire_structs.Tcp_wire.set_tcp_window tcp_buf 536; (* default_mss from tcp/window.ml *)
-  (* leave checksum and urgent pointer unset *)
-  (frame, len + Wire_structs.Tcp_wire.sizeof_tcp)
+  let add_udp (frame, len) source_port dest_port =
+    (* also cribbed from mirage-tcpip *)
+    let frame = Cstruct.set_len frame (len + Wire_structs.sizeof_udp) in
+    let udp_buf = Cstruct.shift frame len in
+    Wire_structs.set_udp_source_port udp_buf source_port;
+    Wire_structs.set_udp_dest_port udp_buf dest_port;
+    Wire_structs.set_udp_length udp_buf (Wire_structs.sizeof_udp);
+    (* leave checksum unset *)
+    (frame, len + Wire_structs.sizeof_udp)
 
-let add_udp (frame, len) source_port dest_port =
-  (* also cribbed from mirage-tcpip *)
-  let frame = Cstruct.set_len frame (len + Wire_structs.sizeof_udp) in
-  let udp_buf = Cstruct.shift frame len in
-  Wire_structs.set_udp_source_port udp_buf source_port;
-  Wire_structs.set_udp_dest_port udp_buf dest_port;
-  Wire_structs.set_udp_length udp_buf (Wire_structs.sizeof_udp (* + Cstruct.lenv
-                                                                 bufs *));
-  (* bufs is payload, which in our case is empty *)
-  (* let csum = Ip.checksum frame (udp_buf (* :: bufs *) ) in
-  Wire_structs.set_udp_checksum udp_buf csum; *)
-  (frame, len + Wire_structs.sizeof_udp)
-
-let test_ipv4_rewriting exp_src exp_dst exp_proto exp_ttl xl_frame =
-  (* should still be an ipv4 frame *)
-  let printer a = Ipaddr.V4.to_string (Ipaddr.V4.of_int32 a) in
-  let ipv4 = ip_and_above_of_frame xl_frame in
-
-  (* should still be an ipv4 packet *)
-  assert_equal 0x0800 (Wire_structs.get_ethernet_ethertype xl_frame);
-
-  assert_equal ~printer (Ipaddr.V4.to_int32 (exp_src)) (Wire_structs.Ipv4_wire.get_ipv4_src ipv4);
-  assert_equal ~printer (Ipaddr.V4.to_int32 (exp_dst)) (Wire_structs.Ipv4_wire.get_ipv4_dst ipv4);
-  assert_equal ~printer:string_of_int exp_proto (Wire_structs.Ipv4_wire.get_ipv4_proto ipv4);
-
-  (* TTL should be the expected value, which the caller sets to k-1 *)
-  assert_equal ~printer:string_of_int exp_ttl (Wire_structs.Ipv4_wire.get_ipv4_ttl ipv4)
-
-  (* don't do checksum checking for now *)
-
-let basic_tcpv4 (direction : Nat_rewrite.direction) proto ttl src dst xl sport dport xlport =
-  let smac_addr = Macaddr.of_string_exn "00:16:3e:ff:00:ff" in
-  let (frame, len) =
-    match direction with
-    (* given that src is the "internal" ip,
-       dst is some "external" host,
-       and xl is the nat IP that faces the "external" host,
-       construct a packet for which the default table would have matches in the
-      appropriate direction.
-      if Rewrite.translate should be overwriting the Destination field,
-      the packet should look like it's coming from an external host,
-      destined for the xl ip, so Rewrite can replace xl with src. *)
-    | Destination -> basic_ipv4_frame proto dst xl ttl smac_addr
-    (* if Rewrite.translate should be overwriting the Source field,
-       the packet should look like it's coming from an internal host, going to
-       a public ip like dst, so Rewrite.translate can replace src with xl. *)
-    | Source -> basic_ipv4_frame proto src dst ttl smac_addr
-  in
-  let frame, _ =
-    match direction with
-    (* situation where you want to rewrite destination:
-     * inbound packet from something that already has a table entry
-     * (s/dst/xl/)
-     *)
-    | Destination -> add_tcp (frame, len) dport xlport
-    (* rewrite source for outbound packets (s/src/xl/) *)
-    | Source -> add_tcp (frame, len) sport dport
-  in
-  let table =
-    match Nat_lookup.insert (Nat_lookup.empty ()) proto
-            ((V4 src), sport) ((V4 dst), dport) ((V4 xl), xlport) ((V4 dst),
-                                                                    dport)
-    with
-    | Some t -> t
-    | None -> assert_failure "Failed to insert test data into table structure"
-  in
-  frame, table
-
-let test_tcp_ipv4_dst context =
-  let ttl = 4 in
-  let proto = 6 in
-  let src = (ipv4_of_str "192.168.108.26") in
-  let dst = (ipv4_of_str "4.141.2.6") in
-  let xl = (ipv4_of_str "128.104.108.1") in
-  let sport, dport, xlport = 255, 1024, 45454 in
-  let frame, table = basic_tcpv4 Destination proto ttl src dst xl sport dport xlport in
-  (* basic_tcpv4 should return a frame that needs destination rewriting --
-   * i.e., one from 4.141.2.6 (dst) to 128.104.108.1 (xl), which needs to have
+  (* basic_tcp_frame should return a frame that needs rewriting in the supplied direction --
+   * i.e., if direction = Destination, one from 4.141.2.6 (dst)
+     to 128.104.108.1 (xl), which needs to have
     * 128.104.108.1 (xl) rewritten to 192.168.108.26 (src) *)
-  test_ipv4_rewriting dst xl proto (ttl) frame;
 
-  let translated_frame = Nat_rewrite.translate table Destination frame in
-  match translated_frame with
-  | None -> assert_failure "Expected translateable frame wasn't rewritten"
-  | Some xl_frame ->
-    (* check basic ipv4 stuff *)
-    test_ipv4_rewriting dst src proto (ttl - 1) xl_frame;
+  let full_packet
+      ~proto ~ttl ~src ~dst ~sport ~dport =
+    let smac_addr = Macaddr.of_string_exn "00:16:3e:ff:00:ff" in
+    let (frame, len) =
+      basic_ipv4_frame proto src dst ttl smac_addr
+    in
+    let frame, _ =
+      let add_transport = match proto with
+      | 6 -> add_tcp
+      | 17 -> add_udp
+      | _ -> failwith "can't add a protocol layer for non-tcp/udp"
+      in
+      add_transport (frame, len) sport dport
+    in
+    frame
 
-    let xl_ipv4 = ip_and_above_of_frame xl_frame in
-    let xl_tcp = transport_and_above_of_ip xl_ipv4 in
-    let payload = Cstruct.shift xl_tcp (Wire_structs.Tcp_wire.sizeof_tcp) in
+  let frame_and_redirect_table (direction : Nat_rewrite.direction) 
+      ~proto ~ttl 
+      ~outside_src ~external_xl ~internal_xl ~internal_client
+      ~outside_sport ~external_xl_port ~internal_xl_port ~internal_client_port =
+    let frame = 
+      match direction with
+      | Source -> full_packet ~proto ~ttl
+                    ~src:outside_src ~dst:external_xl
+                    ~sport:outside_sport ~dport:external_xl_port
+      | Destination -> full_packet ~proto ~ttl
+                         ~src:internal_xl ~dst:internal_client
+                         ~sport:internal_xl_port ~dport:internal_client_port
+    in
+    let table = 
+      let mappings = Nat_translations.map_redirect
+          ~left:((V4 outside_src), outside_sport)
+          ~right:((V4 external_xl), external_xl_port)
+          ~translate_left:((V4 internal_xl), internal_xl_port)
+          ~translate_right:((V4 internal_client), internal_client_port)
+      in
+      match Test_lookup.insert_mappings (Nat_lookup.empty ()) proto mappings with
+      | Some t -> t
+      | None -> assert_failure "Failed to insert test data into table structure"
+    in
+    frame, table
 
-    (* check that src port is the same *)
-    assert_equal ~printer:string_of_int dport
-      (Wire_structs.Tcp_wire.get_tcp_src_port xl_tcp);
-    (* dst port should have been rewritten *)
-    assert_equal ~printer:string_of_int sport
-      (Wire_structs.Tcp_wire.get_tcp_dst_port xl_tcp);
+  (* this seems really unnecessarily convoluted *)
+  let frame_and_nat_table (direction : Nat_rewrite.direction)
+      ~proto ~ttl ~src ~dst ~xl ~sport ~dport ~xlport =
+    let frame = 
+      match direction with
+      | Source -> full_packet ~proto ~ttl ~src ~dst ~sport ~dport 
+      | Destination ->
+        full_packet ~proto ~ttl ~src:dst ~dst:xl ~sport:dport ~dport:xlport
+    in
+    let table =
+      let mappings = Nat_translations.map_nat
+          ~left:((V4 src), sport) ~right:((V4 dst), dport) ~translate_left:((V4 xl), xlport)
+      in
+      match Test_lookup.insert_mappings (Nat_lookup.empty ()) proto mappings with
+      | Some t -> t
+      | None -> assert_failure "Failed to insert test data into table structure"
+    in
+    frame, table
 
-    (* payload should be the same *)
-    (* TODO: TCP is a variable-length header; this shift will fail if options
-       are set *)
-    assert_equal (Cstruct.shift xl_tcp Wire_structs.Tcp_wire.sizeof_tcp)
-      payload
+end
 
-let test_tcp_ipv4_src context =
-  let ttl = 4 in
-  let proto = 6 in
-  let src = (ipv4_of_str "10.231.50.254") in
-  let dst = (ipv4_of_str "215.231.0.1") in
-  let xl = (ipv4_of_str "4.4.4.4") in
-  let sport, dport, xlport = 40192,1024,45454 in
-  let frame, table = basic_tcpv4 Source proto ttl src dst xl sport dport xlport in
-  test_ipv4_rewriting src dst proto ttl frame;
-  (* make sure things are set right in initial frame *)
-  assert_equal ~printer:string_of_int dport
-    (Wire_structs.Tcp_wire.get_tcp_dst_port (transport_and_above_of_ip
-                                               (ip_and_above_of_frame frame)));
-  let translated_frame = Nat_rewrite.translate table Source frame in
-    match translated_frame with
-    | None -> assert_failure "Expected translateable frame wasn't rewritten"
-    | Some xl_frame ->
-      (* check basic ipv4 stuff *)
-      test_ipv4_rewriting xl dst proto (ttl - 1) xl_frame;
-
-      let xl_ipv4 = ip_and_above_of_frame xl_frame in
-      let xl_tcp = transport_and_above_of_ip xl_ipv4 in
-      let payload = Cstruct.shift xl_tcp (Wire_structs.Tcp_wire.sizeof_tcp) in
-
-      (* src port should have been rewritten from sport to xlport *)
-      assert_equal ~printer:string_of_int xlport
-        (Wire_structs.Tcp_wire.get_tcp_src_port xl_tcp);
-
-      (* check that dst port is the same *)
-      assert_equal ~printer:string_of_int dport
-        (Wire_structs.Tcp_wire.get_tcp_dst_port xl_tcp);
-
-      (* payload should be the same *)
-      let original_payload =
-        Cstruct.shift (transport_and_above_of_ip (ip_and_above_of_frame frame))
-          Wire_structs.Tcp_wire.sizeof_tcp in
-      assert_equal original_payload payload
-
-    (* TODO: no checksum checking right now, since we leave that for the actual
-sender to take care of *)
-
-let test_udp_ipv4_dst context =
-  let proto = 17 in
-  let src = (ipv4_of_str "192.168.108.26") in
-  let dst = (ipv4_of_str "4.141.2.6") in
-  let xl = (ipv4_of_str "128.104.108.1") in
-  let sport, dport, xlport = 255, 1024, 45454 in
-  let smac_addr = Macaddr.of_string_exn "00:16:3e:ff:00:ff" in
-  let ttl = 38 in
-  let (frame, len) = basic_ipv4_frame proto dst xl ttl smac_addr in
-  let (frame, len) = add_udp (frame, len) dport xlport in
-  let table =
-    match Nat_lookup.insert (Nat_lookup.empty ()) 17
-            ((V4 src), sport) ((V4 dst), dport) ((V4 xl), xlport) ((V4 dst), dport)
-    with
-    | Some t -> t
-    | None -> assert_failure "Failed to insert test data into table structure"
-  in
-  let translated_frame = Nat_rewrite.translate table Destination frame in
-  match translated_frame with
-  | None -> assert_failure "Expected translateable frame wasn't rewritten"
-  | Some xl_frame ->
-    (* check to see whether ipv4-level translation happened as expected *)
-    test_ipv4_rewriting dst src proto (ttl - 1) xl_frame;
-
-    let xl_ipv4 = ip_and_above_of_frame xl_frame in
-    let xl_udp = transport_and_above_of_ip xl_ipv4 in
-
-    (* UDP destination port should have changed *)
-    assert_equal ~printer:string_of_int sport (Wire_structs.get_udp_dest_port
-                                                 xl_udp);
-
-    (* payload should be unaltered *)
-    let xl_payload = Cstruct.shift xl_udp (Wire_structs.sizeof_udp) in
-      let original_payload =
-        Cstruct.shift (transport_and_above_of_ip (ip_and_above_of_frame frame))
-          Wire_structs.sizeof_udp in
-    assert_equal ~printer:Cstruct.to_string xl_payload original_payload
-    (* TODO: checksum checks *)
-
-let test_udp_ipv6 context =
-  let proto = 17 in
-  let interior_v6 = (Ipaddr.V6.of_string_exn "3333:aaa:bbbb:ccc::dd:ee") in
-  let exterior_v6 = (Ipaddr.V6.of_string_exn "2a01:e35:2e8a:1e0::42:10") in
-  let translate_v6 = (Ipaddr.V6.of_string_exn
-                        "2604:3400:dc1:43:216:3eff:fe85:23c5") in
-  let smac = Macaddr.of_string_exn "00:16:3e:c0:ff:ee" in
-  let (frame, len) = basic_ipv6_frame proto interior_v6 exterior_v6 40 smac in
-  let table =
-    match Nat_lookup.insert (Nat_lookup.empty ()) proto
-            ((V6 interior_v6), 255)
-            ((V6 exterior_v6), 1024)
-            ((V6 translate_v6), 45454)
-            ((V6 exterior_v6), 1024)
-    with
-    | Some t -> t
-    | None -> assert_failure "Failed to insert test data into table structure"
-  in
-  match Nat_rewrite.translate table Destination frame with
-  | None -> todo "Couldn't translate an IPv6 UDP frame"
-  | Some xl_frame -> todo "Sanity checks for IPv6 UDP frame translation not
-  implemented yet :("
+module Default_values = struct
+  let smac_addr = Macaddr.of_string_exn "00:16:3e:ff:00:ff"
+  let src = (ipv4_of_str "192.168.108.26")
+  let dst = (ipv4_of_str "4.141.2.6")
+  let xl = (ipv4_of_str "128.104.108.1")
+  let sport, dport, xlport = 255, 1024, 45454
+end
 
 let check_entry expected (actual : ((Ipaddr.t * int) * (Ipaddr.t * int)) option) =
-  (* TODO: rewrite this; assert_equal and a printer function would be
-     clearer *)
   let printer (left, right) =
     Printf.sprintf "(%s, %d) -> (%s, %d)"
-      (Ipaddr.to_string (fst left)) (snd left) 
-      (Ipaddr.to_string (fst right)) (snd right) 
+      (Ipaddr.to_string (fst left)) (snd left)
+      (Ipaddr.to_string (fst right)) (snd right)
   in
   match actual with
   | Some a -> assert_equal ~printer expected a
   | None -> assert_failure
-              "make_entry claimed success, but was missing expected entries entirely"
+              "an expected entry was missing entirely"
+
+(* given a source IP, destination IP, protocol, and TTL, 
+   check to see whether the provided Ethernet frame contains an IPv4 packet
+   which has those fields set. *)
+let assert_ipv4_has exp_src exp_dst exp_proto exp_ttl xl_frame =
+  let printer a = Ipaddr.V4.to_string (Ipaddr.V4.of_int32 a) in
+  match ip_and_above_of_frame xl_frame with
+  | None -> OUnit.assert_failure "tried to rewrite a messed-up frame"
+  | Some ipv4 ->
+    let open Wire_structs.Ipv4_wire in
+    (* should still be an ipv4 packet *)
+    assert_equal 0x0800 (Wire_structs.get_ethernet_ethertype xl_frame);
+
+    assert_equal ~printer (Ipaddr.V4.to_int32 (exp_src)) (get_ipv4_src ipv4);
+    assert_equal ~printer (Ipaddr.V4.to_int32 (exp_dst)) (get_ipv4_dst ipv4);
+    assert_equal ~printer:string_of_int exp_proto (get_ipv4_proto ipv4);
+    assert_equal ~printer:string_of_int exp_ttl (get_ipv4_ttl ipv4)
+
+let assert_transport_has exp_sport exp_dport xl_frame =
+  match Nat_decompose.layers xl_frame with
+  | None -> OUnit.assert_failure "Decomposition of a frame failed"
+  | Some (frame, ip, tx, payload) ->
+    let (src, dst) = Nat_decompose.ports_of_transport tx in
+    OUnit.assert_equal exp_sport src;
+    OUnit.assert_equal exp_dport dst
+
+let assert_payloads_match expected actual =
+  match (Nat_decompose.layers expected, Nat_decompose.layers actual) with
+  | Some (_, _, _, exp_payload), Some (_, _, _, actual_payload) ->
+    OUnit.assert_equal ~cmp:Cstruct.equal exp_payload actual_payload
+  | _, _ -> OUnit.assert_failure
+              "At least one packet in a payload equality assertion couldn't be decomposed"
+
+let assert_translates table direction frame =
+  let translated_frame = Nat_rewrite.translate table direction frame in
+  match translated_frame with
+  | None -> assert_failure "Expected translateable frame wasn't rewritten"
+  | Some xl_frame -> xl_frame
+
+let test_nat_ipv4 direction proto context =
+  let ttl = 4 in
+  let open Default_values in
+  let frame, table =
+    Constructors.frame_and_nat_table direction ~proto ~ttl ~src ~dst ~xl ~sport ~dport ~xlport in
+  assert_payloads_match frame frame;
+  let xl_frame = assert_translates table direction frame in
+  match direction with
+  | Destination ->
+    assert_ipv4_has dst src proto (ttl - 1) xl_frame;
+    assert_transport_has dport sport xl_frame;
+  | Source ->
+    assert_ipv4_has xl dst proto (ttl - 1) xl_frame;
+    assert_transport_has xlport dport xl_frame;
+  assert_payloads_match frame xl_frame
 
 let test_make_redirect_entry_valid_pkt context =
   let proto = 17 in
@@ -306,15 +223,15 @@ let test_make_redirect_entry_valid_pkt context =
   let outside_requester = ipv4_of_str "1.2.3.4" in
   let nat_external_ip = ipv4_of_str "208.121.103.4" in
   let nat_internal_ip = ipv4_of_str "172.16.2.1" in
-  let internal_client_port, outside_requester_port, 
-      nat_external_port, nat_internal_port = 18787, 80, 80, 8989 in 
-  let smac_addr = Macaddr.of_string_exn "00:16:3e:65:65:65" in
+  let internal_client_port, outside_requester_port,
+      nat_external_port, nat_internal_port = 18787, 80, 80, 8989 in
+  let frame = Constructors.full_packet ~proto ~ttl:52 ~src:outside_requester
+      ~dst:nat_external_ip ~sport:outside_requester_port
+      ~dport:nat_external_port
+  in
   let table = Nat_lookup.empty () in
-  let (frame, len) = basic_ipv4_frame proto outside_requester nat_external_ip 52 smac_addr in
-  let (frame, len) = add_udp (frame, len) 
-      outside_requester_port nat_external_port in
-  match Nat_rewrite.make_redirect_entry table frame 
-          ((Ipaddr.V4 nat_internal_ip), nat_internal_port) 
+  match Nat_rewrite.make_redirect_entry table frame
+          ((Ipaddr.V4 nat_internal_ip), nat_internal_port)
           ((Ipaddr.V4 internal_client), internal_client_port) with
   | Overlap -> assert_failure "make_redirect_entry claimed overlap when inserting into an
                  empty table"
@@ -332,15 +249,15 @@ let test_make_redirect_entry_valid_pkt context =
         (V4 outside_requester, outside_requester_port)
         (V4 nat_external_ip, nat_external_port)
     in
-    check_entry 
-      (((V4 nat_external_ip), nat_external_port), 
+    check_entry
+      (((V4 nat_external_ip), nat_external_port),
        ((V4 outside_requester), outside_requester_port)) internal_client_lookup;
-    check_entry 
-      (((V4 nat_internal_ip), nat_internal_port), 
+    check_entry
+      (((V4 nat_internal_ip), nat_internal_port),
        ((V4 internal_client), internal_client_port)) outside_requester_lookup;
     (* trying the same operation again should give us an Overlap failure *)
-    match Nat_rewrite.make_redirect_entry table frame 
-            ((Ipaddr.V4 nat_internal_ip), nat_internal_port) 
+    match Nat_rewrite.make_redirect_entry table frame
+            ((Ipaddr.V4 nat_internal_ip), nat_internal_port)
             ((Ipaddr.V4 internal_client), internal_client_port) with
     | Overlap -> ()
     | Unparseable ->
@@ -350,15 +267,11 @@ let test_make_redirect_entry_valid_pkt context =
     | Ok t -> assert_failure "make_redirect_entry allowed a duplicate entry"
 
 let test_make_nat_entry_valid_pkt context =
+  let open Default_values in
   let proto = 17 in
-  let src, dst = ipv4_of_str "172.16.2.30", ipv4_of_str "1.2.3.4" in
-  let xl_ip = ipv4_of_str "172.16.0.1" in
-  let sport, dport, xlport = 18787, 80, 10201 in
-  let smac_addr = Macaddr.of_string_exn "00:16:3e:65:65:65" in
   let table = Nat_lookup.empty () in
-  let (frame, len) = basic_ipv4_frame proto src dst 52 smac_addr in
-  let (frame, len) = add_udp (frame, len) sport dport in
-  match Nat_rewrite.make_nat_entry table frame (Ipaddr.V4 xl_ip) xlport with
+  let frame = Constructors.full_packet ~proto ~ttl:52 ~src ~dst ~sport ~dport in
+  match Nat_rewrite.make_nat_entry table frame (Ipaddr.V4 xl) xlport with
   | Overlap -> assert_failure "make_nat_entry claimed overlap when inserting into an
                  empty table"
   | Unparseable ->
@@ -368,11 +281,11 @@ let test_make_nat_entry_valid_pkt context =
   | Ok t ->
     (* make sure table actually has the entries we expect *)
     let src_lookup = Nat_lookup.lookup t proto (V4 src, sport) (V4 dst, dport) in
-    let dst_lookup = Nat_lookup.lookup t proto (V4 dst, dport) (V4 xl_ip, xlport) in
-    check_entry (((V4 xl_ip), xlport), ((V4 dst), dport)) src_lookup;
+    let dst_lookup = Nat_lookup.lookup t proto (V4 dst, dport) (V4 xl, xlport) in
+    check_entry (((V4 xl), xlport), ((V4 dst), dport)) src_lookup;
     check_entry (((V4 dst), dport), ((V4 src), sport)) dst_lookup;
     (* trying the same operation again should give us an Overlap failure *)
-    match Nat_rewrite.make_nat_entry t frame (Ipaddr.V4 xl_ip) xlport with
+    match Nat_rewrite.make_nat_entry t frame (Ipaddr.V4 xl) xlport with
     | Overlap -> ()
     | Unparseable ->
       Printf.printf "Allegedly unparseable frame follows:\n";
@@ -380,83 +293,45 @@ let test_make_nat_entry_valid_pkt context =
       assert_failure "make_nat_entry claimed that a reference packet was unparseable"
     | Ok t -> assert_failure "make_nat_entry allowed a duplicate entry"
 
-let test_ethip_headers context =
-  let proto = 17 in
-  let src, dst = ipv4_of_str "172.16.2.30", ipv4_of_str "1.2.3.4" in
-  let xl_ip = ipv4_of_str "172.16.0.1" in
-  let sport, dport, xlport = 18787, 80, 10201 in
-  let smac_addr = Macaddr.of_string_exn "00:16:3e:65:65:65" in
-  let table = Nat_lookup.empty () in
-  let (frame, len) = basic_ipv4_frame proto src dst 52 smac_addr in
-  let (frame, len) = add_udp (frame, len) sport dport in
-  match Nat_rewrite.layers frame with
-  | None -> assert_failure "Nat_rewrite.layers couldn't get us close enough to
-  make any reasonable test assertions in the first place with ethip"
-  | Some (ethernet, ip, tx) ->
-    match Nat_rewrite.ethip_headers (ethernet, ip) with
-    | None -> assert_failure "ethip_headers couldn't extract headers from
-    totally reasonable ethernet, ip_layer"
-    | Some headers ->
-      assert_equal (Cstruct.sub frame 0 
-        (Wire_structs.sizeof_ethernet + Wire_structs.Ipv4_wire.sizeof_ipv4))
-        headers
-
 let test_make_nat_entry_nonsense context =
   (* sorts of bad packets: broadcast packets,
      non-tcp/udp/icmp packets *)
+  let open Default_values in
   let proto = 17 in
-  let src, dst = ipv4_of_str "172.16.2.30", ipv4_of_str "1.2.3.4" in
-  let xl_ip = ipv4_of_str "172.16.0.1" in
-  let xlport = 10201 in
-  let smac_addr = Macaddr.of_string_exn "00:16:3e:65:65:65" in
   let frame_size = (Wire_structs.sizeof_ethernet + Wire_structs.Ipv4_wire.sizeof_ipv4) in
-  let mangled_looking, _ = basic_ipv4_frame ~frame_size proto src dst 60 smac_addr in
+  let mangled_looking, _ = Constructors.basic_ipv4_frame ~frame_size proto src dst 60 smac_addr in
   match (Nat_rewrite.make_nat_entry (Nat_lookup.empty ()) mangled_looking
-           (Ipaddr.V4 xl_ip) xlport) with
-  | Overlap -> assert_failure "make_nat_entry claimed a mangled packet was already
-  in the table"
+           (Ipaddr.V4 xl) xlport) with
   | Ok t -> assert_failure "make_nat_entry happily took a mangled packet"
+  | Overlap -> assert_failure
+                 "make_nat_entry claimed a mangled packet was already in the table"
   | Unparseable ->
     let broadcast_dst = ipv4_of_str "255.255.255.255" in
-    let sport = 45454 in
-    let dport = 80 in
-    let broadcast, _ = add_tcp (basic_ipv4_frame 6 src broadcast_dst 30 smac_addr)
-        sport dport in
-    match (Nat_rewrite.make_nat_entry (Nat_lookup.empty ()) broadcast (Ipaddr.V4 xl_ip)
+    let broadcast = Constructors.full_packet ~proto:6 ~ttl:30 ~src
+        ~dst:broadcast_dst ~sport ~dport in
+    match (Nat_rewrite.make_nat_entry (Nat_lookup.empty ()) broadcast (Ipaddr.V4 xl)
              xlport) with
-    | Ok _ | Overlap -> assert_failure "make_nat_entry happily took a broadcast
-    packet"
+    | Ok _ | Overlap -> assert_failure "make_nat_entry happily took a broadcast packet"
     | Unparseable ->
       (* try just an ethernet frame *)
       let e = zero_cstruct (Cstruct.create Wire_structs.sizeof_ethernet) in
-      match (Nat_rewrite.make_nat_entry (Nat_lookup.empty ()) e (Ipaddr.V4 xl_ip) xlport)
+      match (Nat_rewrite.make_nat_entry (Nat_lookup.empty ()) e (Ipaddr.V4 xl) xlport)
       with
       | Ok _ | Overlap -> assert_failure "make_nat_entry claims to have succeeded
       with a bare ethernet frame"
       | Unparseable -> ()
 
-let test_tcp_ipv6 context =
-  todo "Test not implemented :("
-
 let suite = "test-rewrite" >:::
-            [
-              "TCP IPv4 destination rewriting works" >:: test_tcp_ipv4_dst ;
-              "TCP IPv4 source rewriting works" >:: test_tcp_ipv4_src ;
-              "UDP IPv4 destination rewriting works" >:: test_udp_ipv4_dst;
-              (* TODO UDP IPv4 source rewriting test *)
-              (* 
-              "UDP IPv6 rewriting works" >:: test_udp_ipv6;
-                "TCP IPv6 rewriting works" >:: test_tcp_ipv6; 
-              *)
-              (* TODO: 4-to-6, 6-to-4 tests *)
-              "make_nat_entry makes entries" >:: test_make_nat_entry_valid_pkt;
-              (* TODO: test make_nat_entry in non-ipv4 contexts *)
-              "make_nat_entry refuses nonsense frames" >::
-              test_make_nat_entry_nonsense;
-              "make_redirect_entry makes entries" >::
-              test_make_redirect_entry_valid_pkt;
-"ethip_headers is sane" >:: test_ethip_headers
-            ]
+  [
+    "IPv4 TCP NAT source rewrites" >:: test_nat_ipv4 Source 6 ;
+    "IPv4 UDP NAT source rewrites" >:: test_nat_ipv4 Source 17 ;
+    "IPv4 TCP NAT destination rewrites" >:: test_nat_ipv4 Destination 6 ;
+    "IPv4 UDP NAT destination rewrites" >:: test_nat_ipv4 Destination 17 ;
+    (* TODO: test make_nat_entry in non-ipv4 contexts *)
+    "make_nat_entry makes entries" >:: test_make_nat_entry_valid_pkt;
+    "make_nat_entry refuses nonsense frames" >:: test_make_nat_entry_nonsense;
+    "make_redirect_entry makes entries" >:: test_make_redirect_entry_valid_pkt;
+  ]
 
 let () =
   run_test_tt_main suite

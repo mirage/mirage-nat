@@ -1,6 +1,6 @@
 OASISFormat: 0.4
 Name: mirage-nat
-Version: 0.2.4
+Version: 0.3.0
 Synopsis: an embryonic NAT module
 Authors: Mindy Preston (meetup@yomimono.org)
 License: ISC
@@ -15,7 +15,8 @@ Flag randomized
 
 Library "mirage-nat"
   Path: lib
-  Modules: Nat_lookup, Nat_rewrite
+  Modules: Nat_lookup, Nat_rewrite, Nat_translations
+  InternalModules: Nat_decompose, Nat_shims
   BuildDepends: ipaddr, tcpip, cstruct
 
 Executable randomized_tests

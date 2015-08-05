@@ -7,12 +7,6 @@ type insert_result =
   | Overlap
   | Unparseable
 
-(* phantom types for Cstructs, so type system can help us keep them straight *)
-type transport
-type ethernet
-type ip
-type 'a layer
-
 (** given a lookup table, rewrite direction, and an ip-level frame,
   * perform any translation indicated by presence in the table
   * on the Cstruct.t .  If the packet should be forwarded, return Some packet,
@@ -46,21 +40,11 @@ val make_nat_entry : Nat_lookup.t -> Cstruct.t -> Ipaddr.t -> int -> insert_resu
 val make_redirect_entry : Nat_lookup.t -> Cstruct.t -> (Ipaddr.t * int) 
   -> (Ipaddr.t * int) -> insert_result
 
-(* given an ip packet, fish out the src and dst ip *)
-val addresses_of_ip : ip layer -> (Ipaddr.t * Ipaddr.t)
-
-(* given an ip packet, fish out the transport-layer protocol number *)
-val proto_of_ip : ip layer -> int
-
-(* given a transport-layer packet, fish out the transport-layer source and
-   destination ports *)
-val ports_of_transport : transport layer -> (int * int)
-
-(* attempt to decompose a frame into Cstructs representing the ethernet, ip, and
-  tx layers.  each cstruct maintains a view into those above it (i.e., the
-   ethernet cstruct's length is not set to the length of the ethernet header).
-*)
-val layers : Cstruct.t -> (ethernet layer * ip layer * transport layer) option
+(* phantom types for Cstructs, so type system can help us keep them straight *)
+type transport
+type ethernet
+type ip
+type 'a layer
 
 (* given a function for recalculating transport-layer checksums and an (ip,
    transport) pair, recalculate and set checksum for valid-looking udp or tcp
@@ -79,7 +63,5 @@ val set_smac : ethernet layer -> Macaddr.t -> ethernet layer
 
 (* support for direct rewriting of packets *)
 val rewrite_ip : bool -> ip layer -> direction -> (Ipaddr.t * Ipaddr.t) -> unit
-
-val ethip_headers : (ethernet layer * ip layer) -> Cstruct.t option
 
 val rewrite_port : transport layer -> direction -> (int * int) -> unit
