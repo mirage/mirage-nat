@@ -1,6 +1,6 @@
 OASISFormat: 0.4
 Name: mirage-nat
-Version: 0.3.0
+Version: 0.4.0
 Synopsis: an embryonic NAT module
 Authors: Mindy Preston (meetup@yomimono.org)
 License: ISC
@@ -16,15 +16,15 @@ Flag randomized
 Library "mirage-nat"
   Path: lib
   Modules: Nat_lookup, Nat_rewrite, Nat_translations
-  InternalModules: Nat_decompose, Nat_shims
-  BuildDepends: ipaddr, tcpip, cstruct
+  InternalModules: Nat_decompose, Nat_shims, Nat_table
+  BuildDepends: ipaddr, tcpip, cstruct, sexplib, sexplib.syntax, tc, irmin-network-datastores, irmin, irmin.mem, lwt
 
 Executable randomized_tests
   Build$: flag(randomized) && flag(tests)
   Path: lib_test
   MainIs: test_randomized.ml
   ByteOpt: -g
-  BuildDepends: oUnit, quickcheck, mirage-nat, arbitrary-network
+  BuildDepends: oUnit, alcotest, quickcheck, mirage-nat, arbitrary-network
 
 Test randomized_tests
   Run$: flag(randomized) && flag(tests)
@@ -34,17 +34,19 @@ Executable test_lookup
   Build$: flag(tests)
   Install: false
   Path: lib_test
+  Custom: true
   MainIs: test_lookup.ml
   ByteOpt: -g
-  BuildDepends: oUnit, mirage-nat
+  BuildDepends: oUnit, alcotest, mirage-nat, lwt.unix
 
 Executable test_rewrite
   Build$: flag(tests)
   Install: false
   Path: lib_test
+  Custom: true
   MainIs: test_rewrite.ml
   ByteOpt: -g
-  BuildDepends: oUnit, tcpip, mirage-nat
+  BuildDepends: oUnit, tcpip, alcotest, mirage-nat, lwt.unix
 
 Test test_lookup
   Run$: flag(tests)

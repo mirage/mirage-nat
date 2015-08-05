@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 50504a8cc575b0a7edc720cddbe311b0)
+# DO NOT EDIT (digest: 43528d2234fbdeab4164bdd68f5f0fa6)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -18,15 +18,30 @@ true: annot, bin_annot
 "lib/mirage-nat.cmxs": use_mirage-nat
 <lib/*.ml{,i,y}>: pkg_cstruct
 <lib/*.ml{,i,y}>: pkg_ipaddr
+<lib/*.ml{,i,y}>: pkg_irmin
+<lib/*.ml{,i,y}>: pkg_irmin-network-datastores
+<lib/*.ml{,i,y}>: pkg_irmin.mem
+<lib/*.ml{,i,y}>: pkg_lwt
+<lib/*.ml{,i,y}>: pkg_sexplib
+<lib/*.ml{,i,y}>: pkg_sexplib.syntax
+<lib/*.ml{,i,y}>: pkg_tc
 <lib/*.ml{,i,y}>: pkg_tcpip
 # Executable randomized_tests
 "lib_test/test_randomized.byte": oasis_executable_randomized_tests_byte
 <lib_test/*.ml{,i,y}>: oasis_executable_randomized_tests_byte
+"lib_test/test_randomized.byte": pkg_alcotest
 "lib_test/test_randomized.byte": pkg_arbitrary-network
 "lib_test/test_randomized.byte": pkg_cstruct
 "lib_test/test_randomized.byte": pkg_ipaddr
+"lib_test/test_randomized.byte": pkg_irmin
+"lib_test/test_randomized.byte": pkg_irmin-network-datastores
+"lib_test/test_randomized.byte": pkg_irmin.mem
+"lib_test/test_randomized.byte": pkg_lwt
 "lib_test/test_randomized.byte": pkg_oUnit
 "lib_test/test_randomized.byte": pkg_quickcheck
+"lib_test/test_randomized.byte": pkg_sexplib
+"lib_test/test_randomized.byte": pkg_sexplib.syntax
+"lib_test/test_randomized.byte": pkg_tc
 "lib_test/test_randomized.byte": pkg_tcpip
 "lib_test/test_randomized.byte": use_mirage-nat
 <lib_test/*.ml{,i,y}>: pkg_arbitrary-network
@@ -34,22 +49,51 @@ true: annot, bin_annot
 # Executable test_lookup
 "lib_test/test_lookup.byte": oasis_executable_test_lookup_byte
 <lib_test/*.ml{,i,y}>: oasis_executable_test_lookup_byte
+"lib_test/test_lookup.byte": pkg_alcotest
 "lib_test/test_lookup.byte": pkg_cstruct
 "lib_test/test_lookup.byte": pkg_ipaddr
+"lib_test/test_lookup.byte": pkg_irmin
+"lib_test/test_lookup.byte": pkg_irmin-network-datastores
+"lib_test/test_lookup.byte": pkg_irmin.mem
+"lib_test/test_lookup.byte": pkg_lwt
+"lib_test/test_lookup.byte": pkg_lwt.unix
 "lib_test/test_lookup.byte": pkg_oUnit
+"lib_test/test_lookup.byte": pkg_sexplib
+"lib_test/test_lookup.byte": pkg_sexplib.syntax
+"lib_test/test_lookup.byte": pkg_tc
 "lib_test/test_lookup.byte": pkg_tcpip
 "lib_test/test_lookup.byte": use_mirage-nat
+"lib_test/test_lookup.byte": custom
 # Executable test_rewrite
 "lib_test/test_rewrite.byte": oasis_executable_test_rewrite_byte
 <lib_test/*.ml{,i,y}>: oasis_executable_test_rewrite_byte
+"lib_test/test_rewrite.byte": pkg_alcotest
 "lib_test/test_rewrite.byte": pkg_cstruct
 "lib_test/test_rewrite.byte": pkg_ipaddr
+"lib_test/test_rewrite.byte": pkg_irmin
+"lib_test/test_rewrite.byte": pkg_irmin-network-datastores
+"lib_test/test_rewrite.byte": pkg_irmin.mem
+"lib_test/test_rewrite.byte": pkg_lwt
+"lib_test/test_rewrite.byte": pkg_lwt.unix
 "lib_test/test_rewrite.byte": pkg_oUnit
+"lib_test/test_rewrite.byte": pkg_sexplib
+"lib_test/test_rewrite.byte": pkg_sexplib.syntax
+"lib_test/test_rewrite.byte": pkg_tc
 "lib_test/test_rewrite.byte": pkg_tcpip
 "lib_test/test_rewrite.byte": use_mirage-nat
+<lib_test/*.ml{,i,y}>: pkg_alcotest
 <lib_test/*.ml{,i,y}>: pkg_cstruct
 <lib_test/*.ml{,i,y}>: pkg_ipaddr
+<lib_test/*.ml{,i,y}>: pkg_irmin
+<lib_test/*.ml{,i,y}>: pkg_irmin-network-datastores
+<lib_test/*.ml{,i,y}>: pkg_irmin.mem
+<lib_test/*.ml{,i,y}>: pkg_lwt
+<lib_test/*.ml{,i,y}>: pkg_lwt.unix
 <lib_test/*.ml{,i,y}>: pkg_oUnit
+<lib_test/*.ml{,i,y}>: pkg_sexplib
+<lib_test/*.ml{,i,y}>: pkg_sexplib.syntax
+<lib_test/*.ml{,i,y}>: pkg_tc
 <lib_test/*.ml{,i,y}>: pkg_tcpip
 <lib_test/*.ml{,i,y}>: use_mirage-nat
+"lib_test/test_rewrite.byte": custom
 # OASIS_STOP

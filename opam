@@ -1,6 +1,6 @@
 opam-version: "1.2"
 name: "mirage-nat"
-version: "0.3.0"
+version: "0.4.0"
 maintainer: "Mindy Preston <meetup@yomimono.org>"
 authors: "Mindy Preston <meetup@yomimono.org>"
 homepage: "https://github.com/yomimono/mirage-nat"
@@ -18,6 +18,11 @@ remove: ["ocamlfind" "remove" "mirage-nat"]
 depends: [
   "ocamlfind" {build}
   "ipaddr"
+  "irmin" { >= "0.9.8" }
+  "irmin-network-datastores"
+  "lwt"
   "tcpip" { >= "2.2.3" }
+  "ounit" {test}
+  "alcotest" {test}
   "arbitrary-test" {test}
 ]
