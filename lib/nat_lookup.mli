@@ -8,6 +8,7 @@ type mode =
   | Nat
 
 module type S = sig
+  module I : Irmin.BASIC
   type t 
 
   val lookup : t -> protocol -> source:endpoint -> destination:endpoint ->
@@ -27,4 +28,5 @@ end
 
 module Make(I : Irmin.S_MAKER) : sig
   include S
+  val store_of_t : t -> I.t
 end

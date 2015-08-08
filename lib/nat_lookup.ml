@@ -26,6 +26,7 @@ let node proto = match proto with
 let (>>=) = Lwt.bind
 
 module type S = sig
+  module I : Irmin.BASIC
   type t 
 
   val lookup : t -> protocol -> source:endpoint -> destination:endpoint ->
@@ -46,7 +47,6 @@ end
 module Make(Backend: Irmin.S_MAKER) = struct
 
   module T = Inds_table.Make(Nat_table.Key)(Nat_table.Entry)(Irmin.Path.String_list)
-  module Backend = Irmin_mem.Make
   module I = Irmin.Basic (Backend)(T)
   type t = (string -> I.t)
 
@@ -60,6 +60,7 @@ module Make(Backend: Irmin.S_MAKER) = struct
     I.update (table "UDP table initialization") (node Udp) (T.empty) >>= fun () ->
     Lwt.return table
 
+  let store_of_t t = t "read for store_of_t"
 
   (* TODO: this is extremely awkward; can we expose a more proper T.mem from T.M? *)
   let mem table key = T.M.mem key table
