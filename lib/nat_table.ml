@@ -20,10 +20,9 @@ module Endpoint = struct
 
 end
 
-(* key is (proto, endpoint, endpoint), value is Confirmed (float, (endpoint, endpoint)) *)
 module Entry : sig
   type entry = (Endpoint.t * Endpoint.t) with sexp
-  type t = | Confirmed of float * entry with sexp
+  type t = | Confirmed of int * entry with sexp
   type result = [ `Ok of entry | `Timeout ]
   include Inds_types.ENTRY
     with type entry := entry
@@ -33,7 +32,7 @@ module Entry : sig
 end = struct
   open Sexplib.Std
   type entry = (Endpoint.t * Endpoint.t) with sexp
-  type t = | Confirmed of float * entry with sexp
+  type t = | Confirmed of int * entry with sexp
   type result = [ `Ok of entry | `Timeout ]
                 (* t and result feel wrong here *)
   let make_confirmed time entry = Confirmed (time, entry)
