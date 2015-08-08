@@ -36,7 +36,7 @@ let default_table () =
     | Some r -> Lwt.return r
     | None -> assert_failure "Couldn't construct test NAT table"
   in
-  empty () >>= fun t ->
+  N.empty () >>= fun t ->
   let v4_mappings = Nat_translations.map_nat
       ~left:interior_v4 ~right:exterior_v4
       ~translate_left:translate_v4 in
@@ -66,14 +66,14 @@ let ipv4_lookup () =
     Tcp, (((str_of_ip "0.0.0.0"), 6000), exterior_v4), None
   ] in
   Lwt_list.map_s (fun (proto, (source, destination), expected) ->
-      check (lookup t proto ~source ~destination) expected) tests >>= fun _ ->
+      check (N.lookup t proto ~source ~destination) expected) tests >>= fun _ ->
   Lwt.return_unit
 
 let ipv6_lookup () =
   default_table () >>= fun t ->
-  check (lookup t Udp interior_v6 translate_v6)
+  check (N.lookup t Udp interior_v6 translate_v6)
     (Some (translate_right_v6, exterior_v6)) >>= fun () ->
-  check (lookup t Udp exterior_v6 translate_right_v6)
+  check (N.lookup t Udp exterior_v6 translate_right_v6)
     (Some (translate_v6, interior_v6))
 
 let uniqueness () =
