@@ -6,7 +6,7 @@ let (>>=) = Lwt.bind
 
 let str_of_ip = Ipaddr.of_string_exn
 
-let expiry = 0. (* TODO: nope! *)
+let expiry = 0 (* TODO: nope! *)
 
 let interior_v4 = ((str_of_ip "1.2.3.4"), 6000)
 let exterior_v4 = ((str_of_ip "192.168.3.11"), 80)

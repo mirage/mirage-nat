@@ -21,7 +21,7 @@ module R = Nat_rewrite.Make(N)
 
 module Constructors = struct
 
-  let expiry = 0.
+  let expiry = 0
 
   let basic_ipv4_frame ?(frame_size=1024) (proto : protocol) src dst ttl smac_addr =
     let ethernet_frame = zero_cstruct (Cstruct.create frame_size) in
