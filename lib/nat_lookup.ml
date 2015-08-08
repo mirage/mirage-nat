@@ -32,7 +32,7 @@ module type S = sig
   val lookup : t -> protocol -> source:endpoint -> destination:endpoint ->
     (endpoint * endpoint) option Lwt.t
 
-  val insert : t -> float -> protocol ->
+  val insert : t -> int -> protocol ->
     internal_lookup:mapping -> 
     external_lookup:mapping ->
     internal_mapping:mapping ->
