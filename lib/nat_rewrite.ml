@@ -145,7 +145,7 @@ module Make(N : Nat_lookup.S) = struct
           in
           (* TODO: for now, set all expirations to 0 and never expire or check
              expiry on anything *)
-          N.insert table 0. proto
+          N.insert table 0 proto
             ~internal_lookup:entries.internal_lookup
             ~external_lookup:entries.external_lookup
             ~internal_mapping:entries.internal_mapping
