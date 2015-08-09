@@ -17,7 +17,7 @@ Library "mirage-nat"
   Path: lib
   Modules: Nat_lookup, Nat_rewrite, Nat_translations, Nat_decompose
   InternalModules: Nat_shims, Nat_table
-  BuildDepends: ipaddr, tcpip, cstruct, sexplib, sexplib.syntax, tc, irmin-network-datastores, irmin, irmin.mem, lwt
+  BuildDepends: ipaddr, tcpip, cstruct, sexplib, sexplib.syntax, tc, irmin-network-datastores, irmin, irmin.mem, lwt, git
 
 Executable randomized_tests
   Build$: flag(randomized) && flag(tests)
@@ -29,6 +29,15 @@ Executable randomized_tests
 Test randomized_tests
   Run$: flag(randomized) && flag(tests)
   Command: $randomized_tests
+
+Executable test_decompose
+  Build$: flag(tests)
+  Install: false
+  Path: lib_test
+  Custom: true
+  MainIs: test_decompose.ml
+  ByteOpt: -g
+  BuildDepends: oUnit, alcotest, mirage-nat, tcpip
 
 Executable test_lookup
   Build$: flag(tests)
@@ -47,6 +56,10 @@ Executable test_rewrite
   MainIs: test_rewrite.ml
   ByteOpt: -g
   BuildDepends: oUnit, tcpip, alcotest, mirage-nat, lwt.unix
+
+Test test_decompose
+  Run$: flag(tests)
+  Command: $test_decompose
 
 Test test_lookup
   Run$: flag(tests)
