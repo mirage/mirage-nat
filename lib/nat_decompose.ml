@@ -78,7 +78,7 @@ let payload_of_transport proto tx =
   match proto with
   | 6 ->
     if (Cstruct.len tx < Wire_structs.Tcp_wire.sizeof_tcp) then None else begin
-      let word_offset = Wire_structs.Tcp_wire.get_tcp_dataoff tx in
+      let word_offset = (Wire_structs.Tcp_wire.get_tcp_dataoff tx) lsr 4 in
       let byte_offset = word_offset * 4 in
       if (Cstruct.len tx < byte_offset) then None
       else Some (Cstruct.shift tx byte_offset)
