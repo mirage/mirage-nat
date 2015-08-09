@@ -62,7 +62,6 @@ module Make(Backend: Irmin.S_MAKER) = struct
 
   let store_of_t t = t "read for store_of_t"
 
-  (* TODO: this is extremely awkward; can we expose a more proper T.mem from T.M? *)
   let mem table key = T.M.mem key table
 
   let lookup table proto ~source ~destination =
