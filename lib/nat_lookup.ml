@@ -1,6 +1,6 @@
 (* TODO: what are the data types on protocol numbers?  no explicit
-types in tcpip/lib/ipv4.ml, just matches on the number
-straight from the struct, so we'll do that too although we
+   types in tcpip/lib/ipv4.ml, just matches on the number
+   straight from the struct, so we'll do that too although we
    should instead restrict to tcp or udp *)
 
 (* TODO: types should be more complex and allow for entries mapping
@@ -8,63 +8,120 @@ straight from the struct, so we'll do that too although we
    type One = port
    type Many = port list
    type mapping = [ One * One, One * Many, Many * One ]
-*)
-type protocol = int
-type port = int (* TODO: should probably formalize that this is uint16 *)
-type endpoint = (Ipaddr.t * port)
-type mapping = (endpoint * endpoint)
-type t = (protocol * endpoint * endpoint,
-          (endpoint * endpoint)) Hashtbl.t
 
+   Doing this will cause us to need a real parser.
+*)
+type protocol = | Udp | Tcp
+type port = int (* TODO: should probably formalize that this is uint16 *)
+type endpoint = Nat_table.Endpoint.t
+type mapping = (endpoint * endpoint)
 type mode =
   | Redirect
   | Nat
 
-let string_of_t (table : t) =
-  let print_pair (addr, port) =
-    Printf.sprintf "addr %s , port %d (%x) " (Ipaddr.to_string addr) port port
-  in
-  Hashtbl.fold (
-    fun (proto, left, right) answer str ->
-      Printf.sprintf "%s proto %d (%x): %s, %s -> %s, %s\n" str
-        proto proto (print_pair left) (print_pair right)
-        (print_pair (fst answer)) (print_pair (snd answer))
-  ) table ""
+let node proto = match proto with
+  | Tcp -> ["tcp"]
+  | Udp -> ["udp"]
 
-let lookup table proto ~source ~destination =
-  match Hashtbl.mem table (proto, source, destination) with
-  | false -> None
-  | true -> Some (Hashtbl.find table (proto, source, destination))
+let (>>=) = Lwt.bind
 
+module type S = sig
+  module I : Irmin.BASIC
+  type t 
 
-(* cases that should result in a valid mapping:
-   neither side is already mapped
-   both sides are already mapped to each other (currently this would be a noop,
-   but there may in the future be more state associated with these entries that
-   then should be updated) *)
-let insert table proto
-    ~internal_lookup ~external_lookup ~internal_mapping ~external_mapping =
-  let protofy proto (src, dst) = (proto, src, dst) in
-  let check proto (src, dst) = Hashtbl.mem table (protofy proto (src, dst)) in
-  match (check proto internal_lookup, check proto external_lookup) with
-  | false, false ->
-    (* probably best to have a branch-and-merge here *)
-    Hashtbl.add table (protofy proto internal_lookup) internal_mapping;
-    Hashtbl.add table (protofy proto external_lookup) external_mapping;
-    Some table
-  | _, _ -> None (* there's already a table entry *)
+  val lookup : t -> protocol -> source:endpoint -> destination:endpoint ->
+    (endpoint * endpoint) option Lwt.t
 
-let delete table proto (left_ip, left_port) (right_ip, right_port)
-    (translate_ip, translate_port) (translate_right_ip, translate_right_port) =
-  (* TODO: this is probably not right for redirects *)
-  let internal_lookup = (proto, (left_ip, left_port), (right_ip, right_port)) in
-  let external_lookup = (proto, (right_ip, right_port), (translate_ip,
-                                                          translate_port)) in
-  (* TODO: under what circumstances does this return None? *)
-  (* branch and merge here *)
-  Hashtbl.remove table internal_lookup;
-  Hashtbl.remove table external_lookup;
-  Some table
+  val insert : t -> int -> protocol ->
+    internal_lookup:mapping -> 
+    external_lookup:mapping ->
+    internal_mapping:mapping ->
+    external_mapping:mapping -> t option Lwt.t
 
-let empty () = Hashtbl.create 200
+  val delete : t -> protocol ->
+    internal_lookup:mapping -> external_lookup:mapping -> t Lwt.t
 
+  val empty : unit -> t Lwt.t
+end
+
+module Make(Backend: Irmin.S_MAKER) = struct
+
+  module T = Inds_table.Make(Nat_table.Key)(Nat_table.Entry)(Irmin.Path.String_list)
+  module I = Irmin.Basic (Backend)(T)
+  type t = (string -> I.t)
+
+  let expired _ = false (* stub *)
+  let owner = "natbot"
+  let config = Irmin_mem.config () (* both config & task need to be parameterized *)
+  let task = Irmin.Task.create ~date:0L ~owner
+  let empty () =
+    I.create config task >>= fun table ->
+    I.update (table "TCP table initialization") (node Tcp) (T.empty) >>= fun () ->
+    I.update (table "UDP table initialization") (node Udp) (T.empty) >>= fun () ->
+    Lwt.return table
+
+  let store_of_t t = t "read for store_of_t"
+
+  let mem table key = T.M.mem key table
+
+  let lookup table proto ~source ~destination =
+    try
+      I.read_exn (table "read for lookup") (node proto) >>= fun table ->
+      match (T.find (source, destination) table) with
+      | Nat_table.Entry.Confirmed (time, mapping) ->
+        if (expired time) then Lwt.return None else Lwt.return (Some mapping)
+    with
+    | Not_found -> Lwt.return None
+
+  let in_branch table proto ~head ~read ~update ~merge fn =
+    I.head_exn (table head) >>= fun head ->
+    I.of_head config task head >>= fun branch ->
+    I.read (branch read) (node proto) >>= function
+    | None -> Lwt.return None
+    | Some map ->
+      let map = T.to_map map in
+      match (fn map) with
+      | None -> Lwt.return None
+      | Some map ->
+        I.update (branch update) (node proto) (T.of_map map) >>= fun () ->
+        I.merge_exn merge branch ~into:table >>= fun () -> Lwt.return (Some table)
+
+  (* cases that should result in a valid mapping:
+     neither side is already mapped *)
+  let insert table expiration proto
+      ~internal_lookup ~external_lookup ~internal_mapping ~external_mapping =
+    let insertor (map : Nat_table.Entry.t T.M.t) = 
+      let check proto (src, dst) = mem map (src, dst) in
+      match (check proto internal_lookup, check proto external_lookup) with
+      | false, false ->
+        let map = T.M.add internal_lookup
+            (Nat_table.Entry.Confirmed (expiration, internal_mapping)) map in
+        let map = T.M.add external_lookup
+            (Nat_table.Entry.Confirmed (expiration, external_mapping)) map in
+        Some map
+      | true, true (* currently the semantics enforced by the unit tests are to
+                         reject duplicate entries, although it may be necessary to
+                         change this in the future *)
+      | _, _ -> None
+    in
+    in_branch table proto
+      ~head:"branching to add entry"
+      ~read:"reading to add entry" 
+      ~update:"add entry"
+      ~merge:"merge after completing add entry"
+      insertor
+
+  let delete table proto ~internal_lookup ~external_lookup =
+    let remover map = 
+      let map = T.M.remove internal_lookup map in
+      let map = T.M.remove external_lookup map in
+      Some map
+    in
+    in_branch table proto
+      ~head:"branching to remove entry"
+      ~read:"reading to remove entry"
+      ~update:"remove entry"
+      ~merge:"merge after completing remove entry"
+      remover >>= fun _ -> Lwt.return table
+
+end

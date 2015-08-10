@@ -1,25 +1,32 @@
-type protocol = int
+type protocol = | Udp | Tcp
 type port = int
-type endpoint = (Ipaddr.t * port)
+type endpoint = Nat_table.Endpoint.t
 type mapping = (endpoint * endpoint)
-type t 
 
 type mode =
   | Redirect
   | Nat
 
-val lookup : t -> protocol -> source:endpoint -> destination:endpoint ->
-  (endpoint * endpoint) option
+module type S = sig
+  module I : Irmin.BASIC
+  type t 
 
-val insert : t -> protocol ->
-  internal_lookup:mapping -> 
-  external_lookup:mapping ->
-  internal_mapping:mapping ->
-  external_mapping:mapping -> t option
+  val lookup : t -> protocol -> source:endpoint -> destination:endpoint ->
+    (endpoint * endpoint) option Lwt.t
 
-(* TODO: this signature looks weird next to insert *)
-val delete : t -> protocol -> endpoint -> endpoint -> endpoint -> endpoint -> t option
+  val insert : t -> int -> protocol ->
+    internal_lookup:mapping -> 
+    external_lookup:mapping ->
+    internal_mapping:mapping ->
+    external_mapping:mapping -> t option Lwt.t
 
-val string_of_t : t -> string
+  val delete : t -> protocol ->
+    internal_lookup:mapping -> external_lookup:mapping -> t Lwt.t
 
-val empty : unit -> t
+  val empty : unit -> t Lwt.t
+end
+
+module Make(I : Irmin.S_MAKER) : sig
+  include S
+  val store_of_t : t -> I.t
+end

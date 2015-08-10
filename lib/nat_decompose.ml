@@ -19,6 +19,7 @@ let addresses_of_ip ip_packet =
   | 6 -> (* ipv6 *)
     (Ipaddr.V6 (V6.of_cstruct_exn (Wire_structs.Ipv6_wire.get_ipv6_src ip_packet)),
      Ipaddr.V6 (V6.of_cstruct_exn (Wire_structs.Ipv6_wire.get_ipv6_dst ip_packet)))
+  | _ -> failwith "invalid ip type in packet"
 
 let retrieve_ports tx_layer =
   (* Cstruct.uint16, Cstruct.uint16 *)
@@ -45,6 +46,7 @@ let proto_of_ip ip_layer =
   match ((hlen_version land 0xf0) lsr 4) with
   | 4 -> Wire_structs.Ipv4_wire.get_ipv4_proto ip_layer
   | 6 -> Wire_structs.Ipv6_wire.get_ipv6_nhdr ip_layer
+  | _ -> failwith "invalid ip type in packet"
 
 let ip_header_length hlen_version = 
   match ((hlen_version land 0xf0) lsr 4) with
@@ -76,7 +78,7 @@ let payload_of_transport proto tx =
   match proto with
   | 6 ->
     if (Cstruct.len tx < Wire_structs.Tcp_wire.sizeof_tcp) then None else begin
-      let word_offset = Wire_structs.Tcp_wire.get_tcp_dataoff tx in
+      let word_offset = (Wire_structs.Tcp_wire.get_tcp_dataoff tx) lsr 4 in
       let byte_offset = word_offset * 4 in
       if (Cstruct.len tx < byte_offset) then None
       else Some (Cstruct.shift tx byte_offset)
