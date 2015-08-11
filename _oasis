@@ -17,7 +17,7 @@ Library "mirage-nat"
   Path: lib
   Modules: Nat_lookup, Nat_rewrite, Nat_translations, Nat_decompose
   InternalModules: Nat_shims, Nat_table
-  BuildDepends: ipaddr, tcpip, cstruct, sexplib, sexplib.syntax, tc, irmin-network-datastores, irmin, irmin.mem, lwt, git
+  BuildDepends: ipaddr, tcpip, cstruct, sexplib, sexplib.syntax, tc, irmin-network-datastores, irmin, irmin.mem, lwt
 
 Executable randomized_tests
   Build$: flag(randomized) && flag(tests)
