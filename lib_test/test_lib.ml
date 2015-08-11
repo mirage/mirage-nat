@@ -1,4 +1,8 @@
-module N = Nat_lookup.Make(Irmin_mem.Make)
+module Unix_clock = struct
+  let now () = Int64.of_float (Unix.time ())
+end
+
+module N = Nat_lookup.Make(Irmin_mem.Make)(Unix_clock)
 
 let insert_mappings table expiry proto mappings =
   let open Nat_translations in
