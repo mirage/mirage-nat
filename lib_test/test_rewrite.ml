@@ -265,16 +265,27 @@ let test_make_redirect_entry_valid_pkt () =
     check_entry
       (((V4 nat_internal_ip), nat_internal_port),
        ((V4 internal_client), internal_client_port)) outside_requester_lookup;
-    (* trying the same operation again should give us an Overlap failure *)
+    (* trying the same operation again should not give us an Overlap failure,
+       just update the expiration time *)
     R.make_redirect_entry table frame
             ((Ipaddr.V4 nat_internal_ip), nat_internal_port)
             ((Ipaddr.V4 internal_client), internal_client_port) >>= function
-    | Overlap -> Lwt.return_unit
+    | Overlap -> assert_failure "overlap claimed for update of entry"
     | Unparseable ->
       Printf.printf "Allegedly unparseable frame follows:\n";
       Cstruct.hexdump frame;
       assert_failure "make_redirect_entry claimed that a reference packet was unparseable"
-    | Ok t -> assert_failure "make_redirect_entry allowed a duplicate entry"
+    | Ok t ->
+      (* attempting to add another entry which partially overlaps should fail *)
+      R.make_redirect_entry table frame
+        ((Ipaddr.of_string_exn "8.8.8.8"), nat_internal_port)
+        ((Ipaddr.V4 internal_client), internal_client_port) >>= function
+      | Overlap -> Lwt.return_unit
+      | Ok _ -> assert_failure "overlapping entry addition allowed"
+      | Unparseable ->
+        Printf.printf "Allegedly unparseable frame follows:\n";
+        Cstruct.hexdump frame;
+        assert_failure "make_redirect_entry claimed that a reference packet was unparseable"
 
 let test_make_nat_entry_valid_pkt () =
   let open Default_values in
@@ -294,14 +305,24 @@ let test_make_nat_entry_valid_pkt () =
     N.lookup t proto (V4 dst, dport) (V4 xl, xlport) >>= fun dst_lookup ->
     check_entry (((V4 xl), xlport), ((V4 dst), dport)) src_lookup;
     check_entry (((V4 dst), dport), ((V4 src), sport)) dst_lookup;
-    (* trying the same operation again should give us an Overlap failure *)
+    (* trying the same operation again should update the expiration time *)
     R.make_nat_entry t frame (Ipaddr.V4 xl) xlport >>= function
-    | Overlap -> Lwt.return_unit
+    | Overlap ->  assert_failure "make_nat_entry disallowed an update"
     | Unparseable ->
       Printf.printf "Allegedly unparseable frame follows:\n";
       Cstruct.hexdump frame;
       assert_failure "make_nat_entry claimed that a reference packet was unparseable"
-    | Ok t -> assert_failure "make_nat_entry allowed a duplicate entry"
+    | Ok t ->
+      (* a half-match should fail with Overlap *)
+      let frame = Constructors.full_packet ~proto ~ttl:52 ~src:xl ~dst ~sport ~dport in
+      R.make_nat_entry t frame (V4 xl) xlport >>= function
+      | Ok t -> assert_failure "overlap wasn't detected"
+      | Unparseable ->
+        Printf.printf "Allegedly unparseable frame follows:\n";
+        Cstruct.hexdump frame;
+        assert_failure "make_nat_entry claimed that a reference packet was unparseable"
+      | Overlap -> Lwt.return_unit
+
 
 let test_make_nat_entry_nonsense () =
   (* sorts of bad packets: broadcast packets,

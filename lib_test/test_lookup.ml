@@ -6,7 +6,7 @@ let (>>=) = Lwt.bind
 
 let str_of_ip = Ipaddr.of_string_exn
 
-let expiry = 0 (* TODO: nope! *)
+let expiry = 999999999999 (* TODO: nope! *)
 
 let interior_v4 = ((str_of_ip "1.2.3.4"), 6000)
 let exterior_v4 = ((str_of_ip "192.168.3.11"), 80)
@@ -80,7 +80,8 @@ let uniqueness () =
   default_table () >>= fun t ->
   (* TODO: this probably does need to check for redirect/nat overlap problems
      and generally be a bit more robust *)
-  let redundant_mappings = Nat_translations.map_nat ~left:interior_v4
+  let redundant_mappings = Nat_translations.map_nat
+      ~left:((Ipaddr.of_string_exn "129.129.129.129"), 80)
       ~right:exterior_v4 ~translate_left:translate_v4 in
   insert_mappings t expiry Tcp redundant_mappings >>= function
   | None -> Lwt.return_unit
