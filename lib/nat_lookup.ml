@@ -19,9 +19,11 @@ type mode =
   | Redirect
   | Nat
 
-let node proto = match proto with
-  | Tcp -> ["tcp"]
-  | Udp -> ["udp"]
+let string_of_proto = function
+  | Tcp -> "tcp"
+  | Udp -> "udp"
+
+let node proto = [ string_of_proto proto ]
 
 let (>>=) = Lwt.bind
 
@@ -107,7 +109,7 @@ module Make(Backend: Irmin.S_MAKER) = struct
     in_branch table proto
       ~head:"branching to add entry"
       ~read:"reading to add entry" 
-      ~update:"add entry"
+      ~update:(Printf.sprintf "add %s entry" (string_of_proto proto))
       ~merge:"merge after completing add entry"
       insertor
 
@@ -120,7 +122,7 @@ module Make(Backend: Irmin.S_MAKER) = struct
     in_branch table proto
       ~head:"branching to remove entry"
       ~read:"reading to remove entry"
-      ~update:"remove entry"
+      ~update:(Printf.sprintf "remove %s entry" (string_of_proto proto))
       ~merge:"merge after completing remove entry"
       remover >>= fun _ -> Lwt.return table
 
