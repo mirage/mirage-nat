@@ -143,9 +143,12 @@ module Make(N : Nat_lookup.S) = struct
                 ~translate_left:(frame_dst_ip, frame_dport)
                 ~translate_right:(other_xl_ip, other_xl_port)
           in
-          (* TODO: for now, set all expirations to 0 and never expire or check
-             expiry on anything *)
-          N.insert table 0 proto
+          let expiration_window =
+            match proto with
+            | Udp -> 60 (* UDP gets 60 seconds *)
+            | Tcp -> 60*60*24 (* TCP gets a day *)
+          in
+          N.insert table expiration_window proto
             ~internal_lookup:entries.internal_lookup
             ~external_lookup:entries.external_lookup
             ~internal_mapping:entries.internal_mapping
