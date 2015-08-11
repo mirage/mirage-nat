@@ -26,7 +26,11 @@ module type S = sig
   val empty : unit -> t Lwt.t
 end
 
-module Make(I : Irmin.S_MAKER) : sig
+module type CLOCK = sig
+  val now : unit -> int64
+end
+
+module Make(I : Irmin.S_MAKER)(Clock: CLOCK) : sig
   include S
   val store_of_t : t -> I.t
 end

@@ -46,16 +46,35 @@ module type S = sig
   val empty : unit -> t Lwt.t
 end
 
-module Make(Backend: Irmin.S_MAKER) = struct
+module type CLOCK = sig
+  val now : unit -> int64
+end
+
+module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK) = struct
 
   module T = Inds_table.Make(Nat_table.Key)(Nat_table.Entry)(Irmin.Path.String_list)
   module I = Irmin.Basic (Backend)(T)
   type t = (string -> I.t)
 
-  let expired _ = false (* stub *)
-  let owner = "natbot"
+  let rec tick t =
+    let expiry_check_interval = 60. in
+    I.head_exn (t "starting expiry") >>= fun head ->
+    I.of_head t.config (task t.owner) head >>= fun our_br ->
+    I.read_exn (our_br "read for timeouts") t.node >>= fun table ->
+    let now = Clock.now () |> Int64.to_int in
+    let updated = T.expire table now in
+    match (T.M.equal updated table) with
+    | false -> 
+      OS.Time.sleep expiry_check_interval >>= fun () -> tick ()
+    | true ->
+      I.update (our_br "tick: removed expired entries") t.node updated >>= fun () ->
+      I.merge_exn "merge expiry branch" our_br ~into:t.cache >>= fun () ->
+      OS.Time.sleep expiry_check_interval >>= fun () -> tick ()
+
+  let expired time = (Clock.now () |> Int64.to_int) > time
+  let owner = "friendly natbot"
   let config = Irmin_mem.config () (* both config & task need to be parameterized *)
-  let task = Irmin.Task.create ~date:0L ~owner
+  let task = Irmin.Task.create ~date:(Clock.now ()) ~owner
   let empty () =
     I.create config task >>= fun table ->
     I.update (table "TCP table initialization") (node Tcp) (T.empty) >>= fun () ->
@@ -90,20 +109,20 @@ module Make(Backend: Irmin.S_MAKER) = struct
 
   (* cases that should result in a valid mapping:
      neither side is already mapped *)
-  let insert table expiration proto
+  let insert table expiry_interval proto
       ~internal_lookup ~external_lookup ~internal_mapping ~external_mapping =
+    let expiration = (Clock.now () |> Int64.to_int) + expiry_interval in
     let insertor (map : Nat_table.Entry.t T.M.t) = 
       let check proto (src, dst) = mem map (src, dst) in
       match (check proto internal_lookup, check proto external_lookup) with
+      | true, true (* TODO: this is not quite right, because it's possible that
+                      the lookups are part of differing pairs. *)
       | false, false ->
         let map = T.M.add internal_lookup
             (Nat_table.Entry.Confirmed (expiration, internal_mapping)) map in
         let map = T.M.add external_lookup
             (Nat_table.Entry.Confirmed (expiration, external_mapping)) map in
         Some map
-      | true, true (* currently the semantics enforced by the unit tests are to
-                         reject duplicate entries, although it may be necessary to
-                         change this in the future *)
       | _, _ -> None
     in
     in_branch table proto
