@@ -67,28 +67,28 @@ module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
   }
 
   let expired time = (Clock.now () |> Int64.to_int) > time
-  let task = Irmin.Task.create ~date:(Clock.now ()) ~owner
+  let task () = Irmin.Task.create ~date:(Clock.now ()) ~owner
 
   let rec tick t () =
     (* only do expiration for UDP, since we intend to do something state-based
        for TCP *)
     let node = node Udp in
-    let expiry_check_interval = 60. in
+    let expiry_check_interval = 6. in
     I.head_exn (t.store "starting expiry") >>= fun head ->
-    I.of_head t.config task head >>= fun our_br ->
+    I.of_head t.config (task ()) head >>= fun our_br ->
     I.read_exn (our_br "read for timeouts") node >>= fun table ->
     let now = Clock.now () |> Int64.to_int in
     let updated = T.expire table now in
     match (T.equal updated table) with
-    | false -> 
-      Time.sleep expiry_check_interval >>= tick t
-    | true ->
-      I.update (our_br "tick: removed expired entries") node updated >>= fun () ->
+    | true -> Time.sleep expiry_check_interval >>= tick t
+    | false ->
+      let message = "tick: removed expired entries as of " ^ (string_of_int now) in
+      I.update (our_br message) node updated >>= fun () ->
       I.merge_exn "merge expiry branch" our_br ~into:t.store >>= fun () ->
       Time.sleep expiry_check_interval >>= tick t
 
   let empty config =
-    I.create config task >>= fun store ->
+    I.create config (task ()) >>= fun store ->
     I.update (store "TCP table initialization") (node Tcp) (T.empty) >>= fun () ->
     I.update (store "UDP table initialization") (node Udp) (T.empty) >>= fun () ->
     let t = {
@@ -113,7 +113,7 @@ module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
 
   let in_branch t proto ~head ~read ~update ~merge fn =
     I.head_exn (t.store head) >>= fun head ->
-    I.of_head t.config task head >>= fun branch ->
+    I.of_head t.config (task ()) head >>= fun branch ->
     I.read (branch read) (node proto) >>= function
     | None -> Lwt.return None
     | Some map ->
