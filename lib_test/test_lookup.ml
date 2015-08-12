@@ -36,7 +36,7 @@ let default_table () =
     | Some r -> Lwt.return r
     | None -> assert_failure "Couldn't construct test NAT table"
   in
-  N.empty () >>= fun t ->
+  N.empty (Irmin_mem.config ()) >>= fun t ->
   let v4_mappings = Nat_translations.map_nat
       ~left:interior_v4 ~right:exterior_v4
       ~translate_left:translate_v4 in

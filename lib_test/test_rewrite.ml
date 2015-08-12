@@ -128,7 +128,7 @@ module Constructors = struct
           ~translate_left:((V4 internal_xl), internal_xl_port)
           ~translate_right:((V4 internal_client), internal_client_port)
       in
-      N.empty () >>= fun t ->
+      N.empty (Irmin_mem.config ()) >>= fun t ->
       insert_mappings t expiry proto mappings >>= function
       | None -> assert_failure "Failed to insert test data into table structure"
       | Some t -> Lwt.return t
@@ -147,7 +147,7 @@ module Constructors = struct
       let mappings = Nat_translations.map_nat
           ~left:((V4 src), sport) ~right:((V4 dst), dport) ~translate_left:((V4 xl), xlport)
       in
-      N.empty () >>= fun t ->
+      N.empty (Irmin_mem.config ()) >>= fun t ->
       insert_mappings t expiry proto mappings >>= function
       | None -> assert_failure "Failed to insert test data into table structure"
       | Some t -> Lwt.return t
@@ -242,8 +242,8 @@ let test_make_redirect_entry_valid_pkt () =
       ~dst:nat_external_ip ~sport:outside_requester_port
       ~dport:nat_external_port
   in
-  N.empty () >>= fun table ->
-  R.make_redirect_entry table frame
+  N.empty (Irmin_mem.config ()) >>= fun t ->
+  R.make_redirect_entry t frame
           ((Ipaddr.V4 nat_internal_ip), nat_internal_port)
           ((Ipaddr.V4 internal_client), internal_client_port) >>= function
   | Overlap -> assert_failure "make_redirect_entry claimed overlap when inserting into an
@@ -267,7 +267,7 @@ let test_make_redirect_entry_valid_pkt () =
        ((V4 internal_client), internal_client_port)) outside_requester_lookup;
     (* trying the same operation again should not give us an Overlap failure,
        just update the expiration time *)
-    R.make_redirect_entry table frame
+    R.make_redirect_entry t frame
             ((Ipaddr.V4 nat_internal_ip), nat_internal_port)
             ((Ipaddr.V4 internal_client), internal_client_port) >>= function
     | Overlap -> assert_failure "overlap claimed for update of entry"
@@ -277,7 +277,7 @@ let test_make_redirect_entry_valid_pkt () =
       assert_failure "make_redirect_entry claimed that a reference packet was unparseable"
     | Ok t ->
       (* attempting to add another entry which partially overlaps should fail *)
-      R.make_redirect_entry table frame
+      R.make_redirect_entry t frame
         ((Ipaddr.of_string_exn "8.8.8.8"), nat_internal_port)
         ((Ipaddr.V4 internal_client), internal_client_port) >>= function
       | Overlap -> Lwt.return_unit
@@ -291,8 +291,8 @@ let test_make_nat_entry_valid_pkt () =
   let open Default_values in
   let proto = Nat_lookup.Udp in
   let frame = Constructors.full_packet ~proto ~ttl:52 ~src ~dst ~sport ~dport in
-  N.empty () >>= fun table ->
-  R.make_nat_entry table frame (Ipaddr.V4 xl) xlport >>= function
+  N.empty (Irmin_mem.config ()) >>= fun t ->
+  R.make_nat_entry t frame (Ipaddr.V4 xl) xlport >>= function
   | Overlap -> assert_failure "make_nat_entry claimed overlap when inserting into an
                  empty table"
   | Unparseable ->
@@ -331,8 +331,8 @@ let test_make_nat_entry_nonsense () =
   let proto = Nat_lookup.Udp in
   let frame_size = (Wire_structs.sizeof_ethernet + Wire_structs.Ipv4_wire.sizeof_ipv4) in
   let mangled_looking, _ = Constructors.basic_ipv4_frame ~frame_size proto src dst 60 smac_addr in
-  N.empty () >>= fun table ->
-  R.make_nat_entry table mangled_looking (Ipaddr.V4 xl) xlport >>= function
+  N.empty (Irmin_mem.config ()) >>= fun t ->
+  R.make_nat_entry t mangled_looking (Ipaddr.V4 xl) xlport >>= function
   | Ok t -> assert_failure "make_nat_entry happily took a mangled packet"
   | Overlap -> assert_failure
                  "make_nat_entry claimed a mangled packet was already in the table"
@@ -344,14 +344,14 @@ let test_make_nat_entry_broadcast () =
   let broadcast_dst = ipv4_of_str "255.255.255.255" in
   let broadcast = Constructors.full_packet ~proto:Tcp ~ttl:30 ~src
       ~dst:broadcast_dst ~sport ~dport in
-  N.empty () >>= fun table ->
-  R.make_nat_entry table broadcast (Ipaddr.V4 xl)
+  N.empty (Irmin_mem.config ()) >>= fun t ->
+  R.make_nat_entry t broadcast (Ipaddr.V4 xl)
     xlport >>= function
   | Ok _ | Overlap -> assert_failure "make_nat_entry operated on a broadcast packet"
   | Unparseable ->
     (* try just an ethernet frame *)
     let e = zero_cstruct (Cstruct.create Wire_structs.sizeof_ethernet) in
-    N.empty () >>= fun t ->
+    N.empty (Irmin_mem.config ()) >>= fun t ->
     R.make_nat_entry t e (Ipaddr.V4 xl) xlport >>= function
     | Ok _ | Overlap ->
       assert_failure "make_nat_entry claims to have succeeded with a bare ethernet frame"
