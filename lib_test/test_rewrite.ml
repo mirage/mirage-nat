@@ -109,11 +109,11 @@ module Constructors = struct
     in
     frame
 
-  let frame_and_redirect_table (direction : Nat_rewrite.direction) 
-      ~proto ~ttl 
+  let frame_and_redirect_table (direction : Nat_rewrite.direction)
+      ~proto ~ttl
       ~outside_src ~external_xl ~internal_xl ~internal_client
       ~outside_sport ~external_xl_port ~internal_xl_port ~internal_client_port =
-    let frame = 
+    let frame =
       match direction with
       | Source -> full_packet ~proto ~ttl
                     ~src:outside_src ~dst:external_xl
@@ -138,9 +138,9 @@ module Constructors = struct
 
   let frame_and_nat_table (direction : Nat_rewrite.direction)
       ~proto ~ttl ~src ~dst ~xl ~sport ~dport ~xlport =
-    let frame = 
+    let frame =
       match direction with
-      | Source -> full_packet ~proto ~ttl ~src ~dst ~sport ~dport 
+      | Source -> full_packet ~proto ~ttl ~src ~dst ~sport ~dport
       | Destination ->
         full_packet ~proto ~ttl ~src:dst ~dst:xl ~sport:dport ~dport:xlport
     in
@@ -176,7 +176,7 @@ let check_entry expected (actual : ((Ipaddr.t * int) * (Ipaddr.t * int)) option)
   | None -> assert_failure
               "an expected entry was missing entirely"
 
-(* given a source IP, destination IP, protocol, and TTL, 
+(* given a source IP, destination IP, protocol, and TTL,
    check to see whether the provided Ethernet frame contains an IPv4 packet
    which has those fields set. *)
 let assert_ipv4_has exp_src exp_dst exp_proto exp_ttl xl_frame =
@@ -360,7 +360,7 @@ let test_make_nat_entry_broadcast () =
 
 let lwt_run f () = Lwt_main.run (f ())
 
-let correct_mappings = 
+let correct_mappings =
   let open Nat_lookup in
   [
   "IPv4 TCP NAT source rewrites", `Quick, lwt_run (fun () -> test_nat_ipv4 Source Udp) ;
