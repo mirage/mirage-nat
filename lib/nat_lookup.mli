@@ -23,10 +23,17 @@ module type S = sig
   val delete : t -> protocol ->
     internal_lookup:mapping -> external_lookup:mapping -> t Lwt.t
 
-  val empty : unit -> t Lwt.t
+  val empty : Irmin.config -> t Lwt.t
 end
 
-module Make(I : Irmin.S_MAKER) : sig
+module type CLOCK = sig
+  val now : unit -> int64
+end
+module type TIME = sig
+  val sleep : float -> unit Lwt.t
+end
+
+module Make(I : Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) : sig
   include S
   val store_of_t : t -> I.t
 end
