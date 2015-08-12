@@ -43,60 +43,77 @@ module type S = sig
   val delete : t -> protocol ->
     internal_lookup:mapping -> external_lookup:mapping -> t Lwt.t
 
-  val empty : unit -> t Lwt.t
+  val empty : Irmin.config -> t Lwt.t
 end
 
 module type CLOCK = sig
   val now : unit -> int64
 end
 
-module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK) = struct
+module type TIME = sig
+  val sleep : float -> unit Lwt.t
+end
+
+module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
 
   module T = Inds_table.Make(Nat_table.Key)(Nat_table.Entry)(Irmin.Path.String_list)
   module I = Irmin.Basic (Backend)(T)
-  type t = (string -> I.t)
 
-  let rec tick t =
-    let expiry_check_interval = 60. in
-    I.head_exn (t "starting expiry") >>= fun head ->
-    I.of_head t.config (task t.owner) head >>= fun our_br ->
-    I.read_exn (our_br "read for timeouts") t.node >>= fun table ->
-    let now = Clock.now () |> Int64.to_int in
-    let updated = T.expire table now in
-    match (T.M.equal updated table) with
-    | false -> 
-      OS.Time.sleep expiry_check_interval >>= fun () -> tick ()
-    | true ->
-      I.update (our_br "tick: removed expired entries") t.node updated >>= fun () ->
-      I.merge_exn "merge expiry branch" our_br ~into:t.cache >>= fun () ->
-      OS.Time.sleep expiry_check_interval >>= fun () -> tick ()
+  let owner = "friendly natbot"
+
+  type t = {
+    config: Irmin.config;
+    store: (string -> I.t);
+  }
 
   let expired time = (Clock.now () |> Int64.to_int) > time
-  let owner = "friendly natbot"
-  let config = Irmin_mem.config () (* both config & task need to be parameterized *)
   let task = Irmin.Task.create ~date:(Clock.now ()) ~owner
-  let empty () =
-    I.create config task >>= fun table ->
-    I.update (table "TCP table initialization") (node Tcp) (T.empty) >>= fun () ->
-    I.update (table "UDP table initialization") (node Udp) (T.empty) >>= fun () ->
-    Lwt.return table
 
-  let store_of_t t = t "read for store_of_t"
+  let rec tick t () =
+    (* only do expiration for UDP, since we intend to do something state-based
+       for TCP *)
+    let node = node Udp in
+    let expiry_check_interval = 60. in
+    I.head_exn (t.store "starting expiry") >>= fun head ->
+    I.of_head t.config task head >>= fun our_br ->
+    I.read_exn (our_br "read for timeouts") node >>= fun table ->
+    let now = Clock.now () |> Int64.to_int in
+    let updated = T.expire table now in
+    match (T.equal updated table) with
+    | false -> 
+      Time.sleep expiry_check_interval >>= tick t
+    | true ->
+      I.update (our_br "tick: removed expired entries") node updated >>= fun () ->
+      I.merge_exn "merge expiry branch" our_br ~into:t.store >>= fun () ->
+      Time.sleep expiry_check_interval >>= tick t
+
+  let empty config =
+    I.create config task >>= fun store ->
+    I.update (store "TCP table initialization") (node Tcp) (T.empty) >>= fun () ->
+    I.update (store "UDP table initialization") (node Udp) (T.empty) >>= fun () ->
+    let t = {
+      config;
+      store;
+    } in
+    Lwt.async (tick t);
+    Lwt.return t
+
+  let store_of_t t = t.store "read for store_of_t"
 
   let mem table key = T.M.mem key table
 
-  let lookup table proto ~source ~destination =
+  let lookup t proto ~source ~destination =
     try
-      I.read_exn (table "read for lookup") (node proto) >>= fun table ->
+      I.read_exn (t.store "read for lookup") (node proto) >>= fun table ->
       match (T.find (source, destination) table) with
       | Nat_table.Entry.Confirmed (time, mapping) ->
         if (expired time) then Lwt.return None else Lwt.return (Some mapping)
     with
     | Not_found -> Lwt.return None
 
-  let in_branch table proto ~head ~read ~update ~merge fn =
-    I.head_exn (table head) >>= fun head ->
-    I.of_head config task head >>= fun branch ->
+  let in_branch t proto ~head ~read ~update ~merge fn =
+    I.head_exn (t.store head) >>= fun head ->
+    I.of_head t.config task head >>= fun branch ->
     I.read (branch read) (node proto) >>= function
     | None -> Lwt.return None
     | Some map ->
@@ -105,7 +122,7 @@ module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK) = struct
       | None -> Lwt.return None
       | Some map ->
         I.update (branch update) (node proto) (T.of_map map) >>= fun () ->
-        I.merge_exn merge branch ~into:table >>= fun () -> Lwt.return (Some table)
+        I.merge_exn merge branch ~into:t.store >>= fun () -> Lwt.return (Some t)
 
   (* cases that should result in a valid mapping:
      neither side is already mapped *)
