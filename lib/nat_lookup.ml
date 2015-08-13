@@ -70,6 +70,7 @@ module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
   let task () = Irmin.Task.create ~date:(Clock.now ()) ~owner
 
   let rec tick t () =
+    MProf.Trace.label "Nat_lookup.tick";
     (* only do expiration for UDP, since we intend to do something state-based
        for TCP *)
     let node = node Udp in
@@ -103,6 +104,7 @@ module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
   let mem table key = T.M.mem key table
 
   let lookup t proto ~source ~destination =
+    MProf.Trace.label "Nat_lookup.lookup";
     try
       I.read_exn (t.store "read for lookup") (node proto) >>= fun table ->
       match (T.find (source, destination) table) with
@@ -128,6 +130,7 @@ module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
      neither side is already mapped *)
   let insert table expiry_interval proto
       ~internal_lookup ~external_lookup ~internal_mapping ~external_mapping =
+    MProf.Trace.label "Nat_lookup.insert";
     let expiration = (Clock.now () |> Int64.to_int) + expiry_interval in
     let insertor (map : Nat_table.Entry.t T.M.t) = 
       let check proto (src, dst) = mem map (src, dst) in
@@ -150,6 +153,7 @@ module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
       insertor
 
   let delete table proto ~internal_lookup ~external_lookup =
+    MProf.Trace.label "Nat_lookup.delete";
     let remover map = 
       let map = T.M.remove internal_lookup map in
       let map = T.M.remove external_lookup map in

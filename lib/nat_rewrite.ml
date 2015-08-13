@@ -60,6 +60,7 @@ module Make(N : Nat_lookup.S) = struct
     | _ -> None
 
   let translate table direction frame =
+    MProf.Trace.label "Nat_rewrite.translate";
     (* note that ethif.input doesn't have the same register-listeners-then-input
        format that tcp/udp do, so we could use it for the outer layer of parsing *)
     let decrement_ttl ip_layer =
