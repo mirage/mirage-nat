@@ -1,9 +1,9 @@
 # OASIS_START
-# DO NOT EDIT (digest: 89c63e8d7fed25dc719a50e10c77883d)
-version = "0.4.0"
+# DO NOT EDIT (digest: 7fcf8b75c88777fbc11357f59bd78924)
+version = "0.5.0"
 description = "an embryonic NAT module"
 requires =
-"ipaddr tcpip cstruct sexplib sexplib.syntax tc irmin-network-datastores irmin irmin.mem lwt"
+"ipaddr tcpip cstruct sexplib sexplib.syntax tc irmin-network-datastores irmin irmin.mem lwt mirage-profile"
 archive(byte) = "mirage-nat.cma"
 archive(byte, plugin) = "mirage-nat.cma"
 archive(native) = "mirage-nat.cmxa"

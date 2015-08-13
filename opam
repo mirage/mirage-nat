@@ -20,6 +20,7 @@ depends: [
   "ipaddr"
   "irmin" { >= "0.9.8" }
   "irmin-network-datastores"
+  "mirage-profile"
   "lwt"
   "tcpip" { >= "2.2.3" }
   "ounit" {test}
