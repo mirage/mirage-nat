@@ -101,6 +101,7 @@ let ethip_headers (e, i) =
   | None | Some _ -> None
 
 let layers frame =
+  MProf.Trace.label "Nat_decompose.layers";
   match ip_and_above_of_frame frame with
   | None -> None
   | Some ip ->
