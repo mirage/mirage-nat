@@ -1,6 +1,7 @@
 open Ipaddr
 open Nat_lookup
 open Nat_shims (* V4 and V6 definitions *)
+open Nat_types
 
 type 'a layer = 'a Nat_decompose.layer
 type ethernet = Nat_decompose.ethernet
@@ -112,7 +113,7 @@ module Make(N : Nat_lookup.S) = struct
             raise (Invalid_argument "Impossible transformation in NAT
                                          table (src ipv4, dst ipv6)")
 
-  let make_entry mode table frame
+  let add_entry mode table frame
       (other_xl_ip, other_xl_port)
       (final_destination_ip, final_destination_port) =
     (* decompose this frame; if we can't, bail out now *)
@@ -149,29 +150,20 @@ module Make(N : Nat_lookup.S) = struct
             | Udp -> 60 (* UDP gets 60 seconds *)
             | Tcp -> 60*60*24 (* TCP gets a day *)
           in
-          N.insert table expiration_window proto
-            ~internal_lookup:entries.internal_lookup
-            ~external_lookup:entries.external_lookup
-            ~internal_mapping:entries.internal_mapping
-            ~external_mapping:entries.external_mapping
-          >>= function
+          N.insert table expiration_window proto entries >>= function
           | Some t -> Lwt.return (Ok t)
           | None -> Lwt.return Overlap
         )
       | _, _, _ -> Lwt.return Unparseable
 
-  (* the frame is addressed to one of our IPs.  We should rewrite the source with
-     the IP of our other interface, along with a randomized port. *)
-  (* We need to be told the real destination IP and port (possibly we can assume
-     the same as the port the frame was addressed to). *)
-  let make_redirect_entry table frame
+  let add_redirect table frame
       (other_xl_ip, other_xl_port)
       (final_destination_ip, final_destination_port) =
-    make_entry (Redirect : Nat_lookup.mode) table frame
+    add_entry Redirect table frame
       (other_xl_ip, other_xl_port)
       (final_destination_ip, final_destination_port)
 
-  let make_nat_entry table frame xl_ip xl_port =
-    make_entry (Nat : Nat_lookup.mode) table frame (xl_ip, xl_port) (xl_ip, xl_port)
+  let add_nat table frame xl_ip xl_port =
+    add_entry Nat table frame (xl_ip, xl_port) (xl_ip, xl_port)
 
 end
