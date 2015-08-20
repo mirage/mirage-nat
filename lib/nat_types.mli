@@ -15,3 +15,15 @@ type translation = {
 type mode =
   | Redirect
   | Nat
+
+type translate_result =
+  | Translated
+  | Untranslated
+
+module type CLOCK = sig
+  val now : unit -> int64
+end
+
+module type TIME = sig
+  val sleep : float -> unit Lwt.t
+end
