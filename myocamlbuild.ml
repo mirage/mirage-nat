@@ -1,5 +1,5 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: ad503dcf86c556fc040dc9357466639a) *)
+(* DO NOT EDIT (digest: 837ddda74384572cc5a9c45d04967742) *)
 module OASISGettext = struct
 (* # 22 "src/oasis/OASISGettext.ml" *)
 
@@ -643,12 +643,6 @@ let package_default =
               "byte"
            ],
             [(OASISExpr.EBool true, S [A "-g"])]);
-          (["oasis_executable_test_lookup_byte"; "ocaml"; "link"; "byte"],
-            [(OASISExpr.EBool true, S [A "-g"])]);
-          (["oasis_executable_test_lookup_byte"; "ocaml"; "ocamldep"; "byte"],
-            [(OASISExpr.EBool true, S [A "-g"])]);
-          (["oasis_executable_test_lookup_byte"; "ocaml"; "compile"; "byte"],
-            [(OASISExpr.EBool true, S [A "-g"])]);
           (["oasis_executable_test_rewrite_byte"; "ocaml"; "link"; "byte"],
             [(OASISExpr.EBool true, S [A "-g"])]);
           (["oasis_executable_test_rewrite_byte"; "ocaml"; "ocamldep"; "byte"
@@ -665,6 +659,6 @@ let conf = {MyOCamlbuildFindlib.no_automatic_syntax = false}
 
 let dispatch_default = MyOCamlbuildBase.dispatch_default conf package_default;;
 
-# 669 "myocamlbuild.ml"
+# 663 "myocamlbuild.ml"
 (* OASIS_STOP *)
 Ocamlbuild_plugin.dispatch dispatch_default;;

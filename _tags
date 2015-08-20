@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: ab106403ff150731381fdb7aad4a6fac)
+# DO NOT EDIT (digest: a54299c0739e5bec3834dc92a3268845)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -66,25 +66,6 @@ true: annot, bin_annot
 "lib_test/test_decompose.byte": pkg_tcpip
 "lib_test/test_decompose.byte": use_mirage-nat
 "lib_test/test_decompose.byte": custom
-# Executable test_lookup
-"lib_test/test_lookup.byte": oasis_executable_test_lookup_byte
-<lib_test/*.ml{,i,y}>: oasis_executable_test_lookup_byte
-"lib_test/test_lookup.byte": pkg_alcotest
-"lib_test/test_lookup.byte": pkg_cstruct
-"lib_test/test_lookup.byte": pkg_ipaddr
-"lib_test/test_lookup.byte": pkg_irmin
-"lib_test/test_lookup.byte": pkg_irmin-network-datastores
-"lib_test/test_lookup.byte": pkg_irmin.mem
-"lib_test/test_lookup.byte": pkg_lwt
-"lib_test/test_lookup.byte": pkg_lwt.unix
-"lib_test/test_lookup.byte": pkg_mirage-profile
-"lib_test/test_lookup.byte": pkg_oUnit
-"lib_test/test_lookup.byte": pkg_sexplib
-"lib_test/test_lookup.byte": pkg_sexplib.syntax
-"lib_test/test_lookup.byte": pkg_tc
-"lib_test/test_lookup.byte": pkg_tcpip
-"lib_test/test_lookup.byte": use_mirage-nat
-"lib_test/test_lookup.byte": custom
 # Executable test_rewrite
 "lib_test/test_rewrite.byte": oasis_executable_test_rewrite_byte
 <lib_test/*.ml{,i,y}>: oasis_executable_test_rewrite_byte
