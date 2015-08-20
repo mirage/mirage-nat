@@ -1,5 +1,5 @@
 open OUnit2
-open Nat_lookup
+open Nat_types
 open Test_lib
 
 let (>>=) = Lwt.bind
@@ -45,8 +45,8 @@ let default_table () =
                       ~translate_left:translate_v6
                       ~translate_right:translate_right_v6 in
 
-  or_error (insert_mappings t expiry Tcp v4_mappings) >>= fun t ->
-  or_error (insert_mappings t expiry Udp v6_mappings)
+  or_error (N.insert t expiry Tcp v4_mappings) >>= fun t ->
+  or_error (N.insert t expiry Udp v6_mappings)
 
 let check f expected =
   let printer = function
@@ -83,7 +83,7 @@ let uniqueness () =
   let redundant_mappings = Nat_translations.map_nat
       ~left:((Ipaddr.of_string_exn "129.129.129.129"), 80)
       ~right:exterior_v4 ~translate_left:translate_v4 in
-  insert_mappings t expiry Tcp redundant_mappings >>= function
+  N.insert t expiry Tcp redundant_mappings >>= function
   | None -> Lwt.return_unit
   | Some t ->
     assert_failure (Printf.sprintf "Insertion succeeded for duplicate table entry %s"
