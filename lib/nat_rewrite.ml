@@ -8,8 +8,6 @@ type ethernet = Nat_decompose.ethernet
 type ip = Nat_decompose.ip
 type transport = Nat_decompose.transport
 
-type direction = Source | Destination
-
 let rewrite_ip is_ipv6 (ip_layer : Cstruct.t) direction i =
   (* TODO: this is not the right set of parameters for a function that might
        have to do 6-to-4 translation *)
@@ -47,9 +45,12 @@ let set_smac ethernet mac =
   Wire_structs.set_ethernet_src (Macaddr.to_bytes mac) 0 ethernet;
   ethernet
 
-module Make(N : Nat_lookup.S) = struct
+module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
+  module N = Nat_lookup.Make(Backend)(Clock)(Time)
+  type t = N.t
+
   type insert_result =
-    | Ok of N.t
+    | Ok of t
     | Overlap
     | Unparseable
 
@@ -59,6 +60,8 @@ module Make(N : Nat_lookup.S) = struct
     | 6 -> Some Tcp
     | 17 -> Some Udp
     | _ -> None
+
+  let empty = N.empty
 
   let translate table direction frame =
     MProf.Trace.label "Nat_rewrite.translate";
@@ -79,20 +82,20 @@ module Make(N : Nat_lookup.S) = struct
       Wire_structs.Ipv4_wire.set_ipv4_csum ip_layer new_csum
     in
     match Nat_decompose.layers frame with
-    | None -> Lwt.return None (* un-NATtable packet; drop it like it's hot *)
+    | None -> Lwt.return Untranslated (* un-NATtable packet; drop it like it's hot *)
     | Some (frame, ip_packet, higherproto_packet, _payload) ->
       match (Nat_decompose.addresses_of_ip ip_packet) with
-      | (V4 src, V6 dst) -> Lwt.return None (* impossible! *)
-      | (V6 src, V4 dst) -> Lwt.return None (* impossible! *)
-      | (V6 src, V6 dst) -> Lwt.return None (* TODO, obviously *)
+      | (V4 src, V6 dst) -> Lwt.return Untranslated (* impossible! *)
+      | (V6 src, V4 dst) -> Lwt.return Untranslated (* impossible! *)
+      | (V6 src, V6 dst) -> Lwt.return Untranslated (* TODO, obviously *)
       | (V4 src, V4 dst) ->
         match protofy (Nat_decompose.proto_of_ip ip_packet) with
-        | None -> Lwt.return None (* TODO: don't just drop all non-udp, non-tcp packets *)
+        | None -> Lwt.return Untranslated (* TODO: don't just drop all non-udp, non-tcp packets *)
         | Some proto ->
           let (sport, dport) = Nat_decompose.ports_of_transport higherproto_packet in
           (* got everything; do the lookup *)
           N.lookup table proto ((V4 src), sport) ((V4 dst), dport) >>= function
-          | None -> Lwt.return None (* don't autocreate new entries *)
+          | None -> Lwt.return Untranslated (* don't autocreate new entries *)
           | Some ((V4 new_src, new_sport), (V4 new_dst, new_dport)) ->
             (* TODO: we should probably refuse to pass TTL = 0 and instead send an
                ICMP message back to the sender *)
@@ -101,11 +104,11 @@ module Make(N : Nat_lookup.S) = struct
             decrement_ttl ip_packet;
             recalculate_ip_checksum ip_packet
               ((Cstruct.len ip_packet) - (Cstruct.len higherproto_packet));
-            Lwt.return (Some frame)
+            Lwt.return Translated
 
           (* TODO: 4-to-6 logic *)
           | Some ((V6 new_src, new_sport), (V6 new_dst, new_dport)) ->
-            Lwt.return None
+            Lwt.return Untranslated
           | Some ((V6 _, _), (V4 _, _)) ->
             raise (Invalid_argument "Impossible transformation in NAT
                                          table (src ipv6, dst ipv4)")
@@ -163,7 +166,7 @@ module Make(N : Nat_lookup.S) = struct
       (other_xl_ip, other_xl_port)
       (final_destination_ip, final_destination_port)
 
-  let add_nat table frame xl_ip xl_port =
+  let add_nat table frame (xl_ip, xl_port) =
     add_entry Nat table frame (xl_ip, xl_port) (xl_ip, xl_port)
 
 end
