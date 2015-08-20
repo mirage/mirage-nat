@@ -15,14 +15,6 @@ module type S = sig
   val empty : Irmin.config -> t Lwt.t
 end
 
-module type CLOCK = sig
-  val now : unit -> int64
-end
-
-module type TIME = sig
-  val sleep : float -> unit Lwt.t
-end
-
 module Make(I : Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) : sig
   include S
   val store_of_t : t -> I.t
