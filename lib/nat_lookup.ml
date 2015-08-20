@@ -29,7 +29,7 @@ let (>>=) = Lwt.bind
 
 module type S = sig
   module I : Irmin.BASIC
-  type t 
+  type t
 
   val lookup : t -> protocol -> source:endpoint -> destination:endpoint ->
     (endpoint * endpoint) option Lwt.t
@@ -132,7 +132,7 @@ module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
       ~internal_lookup ~external_lookup ~internal_mapping ~external_mapping =
     MProf.Trace.label "Nat_lookup.insert";
     let expiration = (Clock.now () |> Int64.to_int) + expiry_interval in
-    let insertor (map : Nat_table.Entry.t T.M.t) = 
+    let insertor (map : Nat_table.Entry.t T.M.t) =
       let check proto (src, dst) = mem map (src, dst) in
       match (check proto internal_lookup, check proto external_lookup) with
       | true, true (* TODO: this is not quite right, because it's possible that
@@ -147,14 +147,14 @@ module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
     in
     in_branch table proto
       ~head:"branching to add entry"
-      ~read:"reading to add entry" 
+      ~read:"reading to add entry"
       ~update:(Printf.sprintf "add %s entry" (string_of_proto proto))
       ~merge:"merge after completing add entry"
       insertor
 
   let delete table proto ~internal_lookup ~external_lookup =
     MProf.Trace.label "Nat_lookup.delete";
-    let remover map = 
+    let remover map =
       let map = T.M.remove internal_lookup map in
       let map = T.M.remove external_lookup map in
       Some map

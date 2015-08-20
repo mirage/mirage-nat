@@ -25,7 +25,7 @@ let rewrite_port (txlayer : Cstruct.t) direction (sport, dport) =
 
 let recalculate_transport_checksum csum_fn (ethernet, ip_layer, transport_layer) =
   match Nat_decompose.ethip_headers (ethernet, ip_layer) with
-  | None -> raise (Invalid_argument 
+  | None -> raise (Invalid_argument
                      "Could not recalculate transport-layer checksum after NAT rewrite")
   | Some just_headers ->
     let fix_checksum set_checksum ip_layer higherlevel_data =
@@ -35,7 +35,7 @@ let recalculate_transport_checksum csum_fn (ethernet, ip_layer, transport_layer)
       set_checksum higherlevel_data actual_checksum
     in
     let () = match Nat_decompose.proto_of_ip ip_layer with
-      | 17 -> fix_checksum Wire_structs.set_udp_checksum ip_layer transport_layer 
+      | 17 -> fix_checksum Wire_structs.set_udp_checksum ip_layer transport_layer
       | 6 ->
         fix_checksum Wire_structs.Tcp_wire.set_tcp_checksum ip_layer transport_layer
       | _ -> ()
@@ -98,7 +98,7 @@ module Make(N : Nat_lookup.S) = struct
             rewrite_ip false ip_packet direction (V4 new_src, V4 new_dst);
             rewrite_port higherproto_packet direction (new_sport, new_dport);
             decrement_ttl ip_packet;
-            recalculate_ip_checksum ip_packet  
+            recalculate_ip_checksum ip_packet
               ((Cstruct.len ip_packet) - (Cstruct.len higherproto_packet));
             Lwt.return (Some frame)
 
