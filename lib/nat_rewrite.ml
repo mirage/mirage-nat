@@ -50,7 +50,7 @@ module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
   type t = N.t
 
   type insert_result =
-    | Ok of t
+    | Ok
     | Overlap
     | Unparseable
 
@@ -154,7 +154,7 @@ module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
             | Tcp -> 60*60*24 (* TCP gets a day *)
           in
           N.insert table expiration_window proto entries >>= function
-          | Some t -> Lwt.return (Ok t)
+          | Some t -> Lwt.return Ok
           | None -> Lwt.return Overlap
         )
       | _, _, _ -> Lwt.return Unparseable

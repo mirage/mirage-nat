@@ -4,7 +4,7 @@ module Make(I : Irmin.S_MAKER)(Clock: CLOCK) (Time: TIME) : sig
   type t
 
   type insert_result =
-    | Ok of t
+    | Ok
     | Overlap
     | Unparseable
 

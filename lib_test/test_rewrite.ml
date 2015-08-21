@@ -121,7 +121,7 @@ module Constructors = struct
       Rewriter.add_redirect t frame
           ((V4 internal_xl), internal_xl_port)
           ((V4 internal_client), internal_client_port) >>= function
-      | Ok t -> Lwt.return t
+      | Ok -> Lwt.return t
       | Overlap | Unparseable -> assert_failure "Failed to insert test data into table structure"
     in
     table () >>= fun table -> Lwt.return (frame, table)
@@ -132,7 +132,7 @@ module Constructors = struct
     let table () =
       Rewriter.empty (Irmin_mem.config ()) >>= fun t ->
       Rewriter.add_nat t frame ((V4 xl), xlport) >>= function
-      | Ok t -> Lwt.return t
+      | Ok -> Lwt.return t
       | Overlap | Unparseable -> assert_failure "Failed to insert test data into table structure"
     in
     table () >>= fun table -> Lwt.return (frame, table)
@@ -254,13 +254,13 @@ let test_add_redirect_valid_pkt () =
       Printf.printf "Allegedly unparseable frame follows:\n";
       Cstruct.hexdump frame;
       assert_failure "add_redirect claimed that a reference packet was unparseable"
-    | Ok t ->
+    | Ok ->
       (* attempting to add another entry which partially overlaps should fail *)
-      Rewriter.add_redirect t orig_frame
+      Rewriter.add_redirect table orig_frame
         ((Ipaddr.of_string_exn "8.8.8.8"), nat_internal_port)
         ((Ipaddr.V4 internal_client), internal_client_port) >>= function
       | Overlap -> Lwt.return_unit
-      | Ok _ -> assert_failure "overlapping entry addition allowed"
+      | Ok -> assert_failure "overlapping entry addition allowed"
       | Unparseable ->
         Printf.printf "Allegedly unparseable frame follows:\n";
         Cstruct.hexdump frame;
@@ -278,7 +278,7 @@ let test_add_nat_valid_pkt () =
     Printf.printf "Allegedly unparseable frame follows:\n";
     Cstruct.hexdump frame;
     assert_failure "add_nat claimed that a reference packet was unparseable"
-  | Ok table ->
+  | Ok ->
     (* make sure table actually has the entries we expect *)
     assert_translates table Source frame >>= fun () ->
     let orig_frame = Constructors.full_packet ~proto ~ttl:52 ~src ~dst ~sport ~dport in
@@ -296,11 +296,11 @@ let test_add_nat_valid_pkt () =
       Printf.printf "Allegedly unparseable frame follows:\n";
       Cstruct.hexdump frame;
       assert_failure "add_nat claimed that a reference packet was unparseable"
-    | Ok table ->
+    | Ok ->
       (* a half-match should fail with Overlap *)
       let frame = Constructors.full_packet ~proto ~ttl:52 ~src:xl ~dst ~sport ~dport in
       Rewriter.add_nat table frame ((Ipaddr.V4 xl), xlport) >>= function
-      | Ok table -> assert_failure "overlap wasn't detected"
+      | Ok -> assert_failure "overlap wasn't detected"
       | Unparseable ->
         Printf.printf "Allegedly unparseable frame follows:\n";
         Cstruct.hexdump frame;
@@ -317,7 +317,7 @@ let test_add_nat_nonsense () =
   let mangled_looking, _ = Constructors.basic_ipv4_frame ~frame_size proto src dst 60 smac_addr in
   Rewriter.empty (Irmin_mem.config ()) >>= fun t ->
   Rewriter.add_nat t mangled_looking ((Ipaddr.V4 xl), xlport) >>= function
-  | Rewriter.Ok t -> assert_failure "add_nat happily took a mangled packet"
+  | Rewriter.Ok -> assert_failure "add_nat happily took a mangled packet"
   | Rewriter.Overlap -> assert_failure
                  "add_nat claimed a mangled packet was already in the table"
   | Rewriter.Unparseable -> Lwt.return_unit
@@ -330,13 +330,13 @@ let test_add_nat_broadcast () =
       ~dst:broadcast_dst ~sport ~dport in
   Rewriter.empty (Irmin_mem.config ()) >>= fun t ->
   Rewriter.add_nat t broadcast ((Ipaddr.V4 xl), xlport) >>= function
-  | Ok _ | Overlap -> assert_failure "add_nat operated on a broadcast packet"
+  | Ok | Overlap -> assert_failure "add_nat operated on a broadcast packet"
   | Unparseable ->
     (* try just an ethernet frame *)
     let e = zero_cstruct (Cstruct.create Wire_structs.sizeof_ethernet) in
     Rewriter.empty (Irmin_mem.config ()) >>= fun t ->
     Rewriter.add_nat t e ((Ipaddr.V4 xl), xlport) >>= function
-    | Ok _ | Overlap ->
+    | Ok | Overlap ->
       assert_failure "add_nat claims to have succeeded with a bare ethernet frame"
     | Unparseable -> Lwt.return_unit
 
