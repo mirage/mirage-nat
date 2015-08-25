@@ -1,5 +1,5 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: 837ddda74384572cc5a9c45d04967742) *)
+(* DO NOT EDIT (digest: b1750f435625019f1852d101bc729ca6) *)
 module OASISGettext = struct
 (* # 22 "src/oasis/OASISGettext.ml" *)
 
@@ -607,7 +607,7 @@ end
 open Ocamlbuild_plugin;;
 let package_default =
   {
-     MyOCamlbuildBase.lib_ocaml = [("mirage-nat", ["lib"], [])];
+     MyOCamlbuildBase.lib_ocaml = [("mirage-nat", ["lib"], ["Nat_types"])];
      lib_c = [];
      flags =
        [

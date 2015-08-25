@@ -1,8 +1,10 @@
+open Sexplib.Std
+
 type direction = | Source | Destination
 
 type protocol = | Udp | Tcp
 type port = Cstruct.uint16
-type endpoint = Nat_table.Endpoint.t
+type endpoint = (Ipaddr.t * port)
 type mapping = (endpoint * endpoint)
 
 type translation = {
