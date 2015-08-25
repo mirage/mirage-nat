@@ -1,6 +1,7 @@
 open Nat_types
 
 module Make(I : Irmin.S_MAKER)(Clock: CLOCK) (Time: TIME) : sig
+  module I : Irmin.BASIC
   type t
 
   type insert_result =
@@ -41,6 +42,9 @@ module Make(I : Irmin.S_MAKER)(Clock: CLOCK) (Time: TIME) : sig
     * if insertion succeeded, return the new table;
     * otherwise, return an error type indicating the problem. *)
   val add_redirect : t -> Cstruct.t -> endpoint -> endpoint -> insert_result Lwt.t
+
+  (** handle for accessing the store directly. *)
+  val store_of_t : t -> I.t
 
 end
 

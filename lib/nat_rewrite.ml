@@ -47,6 +47,7 @@ let set_smac ethernet mac =
 
 module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
   module N = Nat_lookup.Make(Backend)(Clock)(Time)
+  module I = N.I
   type t = N.t
 
   type insert_result =
@@ -62,6 +63,8 @@ module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
     | _ -> None
 
   let empty = N.empty
+
+  let store_of_t = N.store_of_t
 
   let translate table direction frame =
     MProf.Trace.label "Nat_rewrite.translate";
