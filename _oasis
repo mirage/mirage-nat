@@ -5,7 +5,6 @@ Synopsis: an embryonic NAT module
 Authors: Mindy Preston (meetup@yomimono.org)
 License: ISC
 Plugins: META (0.4), DevFiles (0.4)
-AlphaFeatures: pure_interface
 BuildTools: ocamlbuild
 
 Description: rewrite packets to support translation between external and internal address space
@@ -16,7 +15,7 @@ Flag randomized
 
 Library "mirage-nat"
   Path: lib
-  Modules: Nat_rewrite, Nat_translations, Nat_decompose, Nat_types
+  Modules: Nat_rewrite, Nat_translations, Nat_decompose
   InternalModules: Nat_shims, Nat_lookup, Nat_table
   BuildDepends: ipaddr, tcpip, cstruct, sexplib, sexplib.syntax, tc, irmin-network-datastores, irmin, irmin.mem, lwt, mirage-profile
 
@@ -36,6 +35,7 @@ Executable test_decompose
   Install: false
   Path: lib_test
   Custom: true
+  CompiledObject: best
   MainIs: test_decompose.ml
   ByteOpt: -g
   BuildDepends: oUnit, alcotest, mirage-nat, tcpip

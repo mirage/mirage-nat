@@ -58,8 +58,8 @@ module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
   let (>>=) = Lwt.bind
 
   let protofy num = match num with
-    | 6 -> Some Tcp
-    | 17 -> Some Udp
+    | 6 -> Some Nat_table.Key.Tcp
+    | 17 -> Some Nat_table.Key.Udp
     | _ -> None
 
   let empty = N.empty

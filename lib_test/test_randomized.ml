@@ -1,4 +1,3 @@
-open Nat_lookup
 open OUnit
 
 let arbitrary_table_entry =
@@ -14,16 +13,11 @@ let arbitrary_table_entry =
 
 let crud context =
   let module QC = QuickCheck in
-  (* create, update, delete work as expected *)
-  (* propositions: inserting then looking up results in input being found;
-     deleting then looking up results in input not being found *)
-  (* ideally we'd do this as
-     "make an empty table,
-     insert a batch of random things,
-     test that they're all there and correct,
-     delete all of them,
-     test that they're not there,
-     test that nothing's there" *)
+  (* propositions:
+  (* parseable UDP/TCP packets (and only those) result in a table insertion *)
+     inserting then looking up a frame results in a valid translation *)
+  (* the table is capable of handling many (~10,000, say) connections without
+     the program ending abnormally *)
   let prop_nat_cruds_as_expected input (* where input is a list of random proto ->
                                           ip,port -> ip,port *) =
     let mem_bidirectional table protocol left right translate =

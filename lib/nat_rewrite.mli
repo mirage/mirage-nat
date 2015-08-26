@@ -1,7 +1,7 @@
 open Nat_types
 
 module Make(I : Irmin.S_MAKER)(Clock: CLOCK) (Time: TIME) : sig
-  module I : Irmin.BASIC
+  module I : Irmin.S
   type t
 
   type insert_result =
