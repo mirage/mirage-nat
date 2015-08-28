@@ -1,9 +1,4 @@
-type endpoint = Nat_lookup.endpoint
-type mapping = Nat_lookup.mapping
-type result = {internal_lookup: mapping;
-               external_lookup: mapping;
-               internal_mapping: mapping;
-               external_mapping: mapping }
+open Nat_types
 
 let map_nat ~left ~right ~translate_left =
   let internal_lookup = (left, right) in

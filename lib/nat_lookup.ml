@@ -11,10 +11,8 @@
 
    Doing this will cause us to need a real parser.
 *)
-type protocol = | Udp | Tcp
-type port = int (* TODO: should probably formalize that this is uint16 *)
-type endpoint = Nat_table.Endpoint.t
-type mapping = (endpoint * endpoint)
+open Nat_types
+
 type mode =
   | Redirect
   | Nat
@@ -23,22 +21,21 @@ let string_of_proto = function
   | Tcp -> "tcp"
   | Udp -> "udp"
 
+(* subsume nat_lookup in nat_rewrite and provide some interfaces for static
+   mappings a la mirage-mimic *)
+
 let node proto = [ string_of_proto proto ]
 
 let (>>=) = Lwt.bind
 
 module type S = sig
   module I : Irmin.BASIC
-  type t 
+  type t
 
   val lookup : t -> protocol -> source:endpoint -> destination:endpoint ->
     (endpoint * endpoint) option Lwt.t
 
-  val insert : t -> int -> protocol ->
-    internal_lookup:mapping -> 
-    external_lookup:mapping ->
-    internal_mapping:mapping ->
-    external_mapping:mapping -> t option Lwt.t
+  val insert : t -> int -> protocol -> translation -> t option Lwt.t
 
   val delete : t -> protocol ->
     internal_lookup:mapping -> external_lookup:mapping -> t Lwt.t
@@ -104,57 +101,65 @@ module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
   let mem table key = T.M.mem key table
 
   let lookup t proto ~source ~destination =
-    MProf.Trace.label "Nat_lookup.lookup";
+    MProf.Trace.label "Nat_lookup.lookup.read";
     try
       I.read_exn (t.store "read for lookup") (node proto) >>= fun table ->
+      MProf.Trace.label "Nat_lookup.lookup.find";
       match (T.find (source, destination) table) with
       | Nat_table.Entry.Confirmed (time, mapping) ->
+        MProf.Trace.label "Nat_lookup.lookup.check_expiry";
         if (expired time) then Lwt.return None else Lwt.return (Some mapping)
     with
     | Not_found -> Lwt.return None
 
   let in_branch t proto ~head ~read ~update ~merge fn =
+    MProf.Trace.label "Nat_lookup.in_branch.head";
     I.head_exn (t.store head) >>= fun head ->
+    MProf.Trace.label "Nat_lookup.in_branch.of_head";
     I.of_head t.config (task ()) head >>= fun branch ->
+    MProf.Trace.label "Nat_lookup.in_branch.read";
     I.read (branch read) (node proto) >>= function
     | None -> Lwt.return None
     | Some map ->
+      MProf.Trace.label "Nat_lookup.in_branch.to_map";
       let map = T.to_map map in
+      MProf.Trace.label "Nat_lookup.in_branch.fn map";
       match (fn map) with
       | None -> Lwt.return None
       | Some map ->
+        MProf.Trace.label "Nat_lookup.in_branch.update";
         I.update (branch update) (node proto) (T.of_map map) >>= fun () ->
+        MProf.Trace.label "Nat_lookup.in_branch.merge";
         I.merge_exn merge branch ~into:t.store >>= fun () -> Lwt.return (Some t)
 
   (* cases that should result in a valid mapping:
      neither side is already mapped *)
-  let insert table expiry_interval proto
-      ~internal_lookup ~external_lookup ~internal_mapping ~external_mapping =
+  let insert table expiry_interval proto mappings =
     MProf.Trace.label "Nat_lookup.insert";
     let expiration = (Clock.now () |> Int64.to_int) + expiry_interval in
-    let insertor (map : Nat_table.Entry.t T.M.t) = 
+    let insertor (map : Nat_table.Entry.t T.M.t) =
       let check proto (src, dst) = mem map (src, dst) in
-      match (check proto internal_lookup, check proto external_lookup) with
+      match (check proto mappings.internal_lookup, check proto mappings.external_lookup) with
       | true, true (* TODO: this is not quite right, because it's possible that
                       the lookups are part of differing pairs. *)
       | false, false ->
-        let map = T.M.add internal_lookup
-            (Nat_table.Entry.Confirmed (expiration, internal_mapping)) map in
-        let map = T.M.add external_lookup
-            (Nat_table.Entry.Confirmed (expiration, external_mapping)) map in
+        let map = T.M.add mappings.internal_lookup
+            (Nat_table.Entry.Confirmed (expiration, mappings.internal_mapping)) map in
+        let map = T.M.add mappings.external_lookup
+            (Nat_table.Entry.Confirmed (expiration, mappings.external_mapping)) map in
         Some map
       | _, _ -> None
     in
     in_branch table proto
       ~head:"branching to add entry"
-      ~read:"reading to add entry" 
+      ~read:"reading to add entry"
       ~update:(Printf.sprintf "add %s entry" (string_of_proto proto))
       ~merge:"merge after completing add entry"
       insertor
 
   let delete table proto ~internal_lookup ~external_lookup =
     MProf.Trace.label "Nat_lookup.delete";
-    let remover map = 
+    let remover map =
       let map = T.M.remove internal_lookup map in
       let map = T.M.remove external_lookup map in
       Some map

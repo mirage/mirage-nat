@@ -1,13 +1,12 @@
 open Ipaddr
 open Nat_lookup
 open Nat_shims (* V4 and V6 definitions *)
+open Nat_types
 
 type 'a layer = 'a Nat_decompose.layer
 type ethernet = Nat_decompose.ethernet
 type ip = Nat_decompose.ip
 type transport = Nat_decompose.transport
-
-type direction = Source | Destination
 
 let rewrite_ip is_ipv6 (ip_layer : Cstruct.t) direction i =
   (* TODO: this is not the right set of parameters for a function that might
@@ -25,7 +24,7 @@ let rewrite_port (txlayer : Cstruct.t) direction (sport, dport) =
 
 let recalculate_transport_checksum csum_fn (ethernet, ip_layer, transport_layer) =
   match Nat_decompose.ethip_headers (ethernet, ip_layer) with
-  | None -> raise (Invalid_argument 
+  | None -> raise (Invalid_argument
                      "Could not recalculate transport-layer checksum after NAT rewrite")
   | Some just_headers ->
     let fix_checksum set_checksum ip_layer higherlevel_data =
@@ -35,7 +34,7 @@ let recalculate_transport_checksum csum_fn (ethernet, ip_layer, transport_layer)
       set_checksum higherlevel_data actual_checksum
     in
     let () = match Nat_decompose.proto_of_ip ip_layer with
-      | 17 -> fix_checksum Wire_structs.set_udp_checksum ip_layer transport_layer 
+      | 17 -> fix_checksum Wire_structs.set_udp_checksum ip_layer transport_layer
       | 6 ->
         fix_checksum Wire_structs.Tcp_wire.set_tcp_checksum ip_layer transport_layer
       | _ -> ()
@@ -46,9 +45,13 @@ let set_smac ethernet mac =
   Wire_structs.set_ethernet_src (Macaddr.to_bytes mac) 0 ethernet;
   ethernet
 
-module Make(N : Nat_lookup.S) = struct
+module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
+  module N = Nat_lookup.Make(Backend)(Clock)(Time)
+  module I = N.I
+  type t = N.t
+
   type insert_result =
-    | Ok of N.t
+    | Ok
     | Overlap
     | Unparseable
 
@@ -58,6 +61,10 @@ module Make(N : Nat_lookup.S) = struct
     | 6 -> Some Tcp
     | 17 -> Some Udp
     | _ -> None
+
+  let empty = N.empty
+
+  let store_of_t = N.store_of_t
 
   let translate table direction frame =
     MProf.Trace.label "Nat_rewrite.translate";
@@ -78,33 +85,33 @@ module Make(N : Nat_lookup.S) = struct
       Wire_structs.Ipv4_wire.set_ipv4_csum ip_layer new_csum
     in
     match Nat_decompose.layers frame with
-    | None -> Lwt.return None (* un-NATtable packet; drop it like it's hot *)
+    | None -> Lwt.return Untranslated (* un-NATtable packet; drop it like it's hot *)
     | Some (frame, ip_packet, higherproto_packet, _payload) ->
       match (Nat_decompose.addresses_of_ip ip_packet) with
-      | (V4 src, V6 dst) -> Lwt.return None (* impossible! *)
-      | (V6 src, V4 dst) -> Lwt.return None (* impossible! *)
-      | (V6 src, V6 dst) -> Lwt.return None (* TODO, obviously *)
+      | (V4 src, V6 dst) -> Lwt.return Untranslated (* impossible! *)
+      | (V6 src, V4 dst) -> Lwt.return Untranslated (* impossible! *)
+      | (V6 src, V6 dst) -> Lwt.return Untranslated (* TODO, obviously *)
       | (V4 src, V4 dst) ->
         match protofy (Nat_decompose.proto_of_ip ip_packet) with
-        | None -> Lwt.return None (* TODO: don't just drop all non-udp, non-tcp packets *)
+        | None -> Lwt.return Untranslated (* TODO: don't just drop all non-udp, non-tcp packets *)
         | Some proto ->
           let (sport, dport) = Nat_decompose.ports_of_transport higherproto_packet in
           (* got everything; do the lookup *)
           N.lookup table proto ((V4 src), sport) ((V4 dst), dport) >>= function
-          | None -> Lwt.return None (* don't autocreate new entries *)
+          | None -> Lwt.return Untranslated (* don't autocreate new entries *)
           | Some ((V4 new_src, new_sport), (V4 new_dst, new_dport)) ->
             (* TODO: we should probably refuse to pass TTL = 0 and instead send an
                ICMP message back to the sender *)
             rewrite_ip false ip_packet direction (V4 new_src, V4 new_dst);
             rewrite_port higherproto_packet direction (new_sport, new_dport);
             decrement_ttl ip_packet;
-            recalculate_ip_checksum ip_packet  
+            recalculate_ip_checksum ip_packet
               ((Cstruct.len ip_packet) - (Cstruct.len higherproto_packet));
-            Lwt.return (Some frame)
+            Lwt.return Translated
 
           (* TODO: 4-to-6 logic *)
           | Some ((V6 new_src, new_sport), (V6 new_dst, new_dport)) ->
-            Lwt.return None
+            Lwt.return Untranslated
           | Some ((V6 _, _), (V4 _, _)) ->
             raise (Invalid_argument "Impossible transformation in NAT
                                          table (src ipv6, dst ipv4)")
@@ -112,7 +119,7 @@ module Make(N : Nat_lookup.S) = struct
             raise (Invalid_argument "Impossible transformation in NAT
                                          table (src ipv4, dst ipv6)")
 
-  let make_entry mode table frame
+  let add_entry mode table frame
       (other_xl_ip, other_xl_port)
       (final_destination_ip, final_destination_port) =
     (* decompose this frame; if we can't, bail out now *)
@@ -149,29 +156,20 @@ module Make(N : Nat_lookup.S) = struct
             | Udp -> 60 (* UDP gets 60 seconds *)
             | Tcp -> 60*60*24 (* TCP gets a day *)
           in
-          N.insert table expiration_window proto
-            ~internal_lookup:entries.internal_lookup
-            ~external_lookup:entries.external_lookup
-            ~internal_mapping:entries.internal_mapping
-            ~external_mapping:entries.external_mapping
-          >>= function
-          | Some t -> Lwt.return (Ok t)
+          N.insert table expiration_window proto entries >>= function
+          | Some t -> Lwt.return Ok
           | None -> Lwt.return Overlap
         )
       | _, _, _ -> Lwt.return Unparseable
 
-  (* the frame is addressed to one of our IPs.  We should rewrite the source with
-     the IP of our other interface, along with a randomized port. *)
-  (* We need to be told the real destination IP and port (possibly we can assume
-     the same as the port the frame was addressed to). *)
-  let make_redirect_entry table frame
+  let add_redirect table frame
       (other_xl_ip, other_xl_port)
       (final_destination_ip, final_destination_port) =
-    make_entry (Redirect : Nat_lookup.mode) table frame
+    add_entry Redirect table frame
       (other_xl_ip, other_xl_port)
       (final_destination_ip, final_destination_port)
 
-  let make_nat_entry table frame xl_ip xl_port =
-    make_entry (Nat : Nat_lookup.mode) table frame (xl_ip, xl_port) (xl_ip, xl_port)
+  let add_nat table frame (xl_ip, xl_port) =
+    add_entry Nat table frame (xl_ip, xl_port) (xl_ip, xl_port)
 
 end

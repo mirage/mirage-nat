@@ -1,19 +1,22 @@
-(* should the source IP and port be overwritten,
-   or the destination IP and port?  *)
-type direction = Source | Destination
+open Nat_types
 
-module Make(N: Nat_lookup.S) : sig
+module Make(I : Irmin.S_MAKER)(Clock: CLOCK) (Time: TIME) : sig
+  module I : Irmin.BASIC
+  type t
+
   type insert_result =
-    | Ok of N.t
+    | Ok
     | Overlap
     | Unparseable
+
+  val empty : Irmin.config -> t Lwt.t
 
   (** given a lookup table, rewrite direction, and an ip-level frame,
     * perform any translation indicated by presence in the table
     * on the Cstruct.t .  If the packet should be forwarded, return Some packet,
-    * else return None.  
+    * else return None.
     * This function is zero-copy and mutates values in the given Cstruct.  *)
-  val translate : N.t -> direction -> Cstruct.t -> Cstruct.t option Lwt.t
+  val translate : t -> direction -> Cstruct.t -> translate_result Lwt.t
 
   (** given a table, a frame, and a translation IP and port,
     * put relevant entries for the (src_ip, src_port), (dst_ip, dst_port) from the
@@ -25,22 +28,23 @@ module Make(N: Nat_lookup.S) : sig
          (dst_ip, dst_port), (src_ip, src_port)).
     * if insertion succeeded, return the new table;
     * otherwise, return an error type indicating the problem. *)
-  val make_nat_entry : N.t -> Cstruct.t -> Ipaddr.t -> int ->
-    insert_result Lwt.t
+  val add_nat : t -> Cstruct.t -> endpoint -> insert_result Lwt.t
 
   (** given a table, a frame from which (src_ip, src_port) and (xl_left_ip,
       xl_left_port) can be extracted (these are source and destination for the
       packet), a translation (xl_left_ip, xl_left_port) pair, and a final
       destination (dst_ip, dst_port) pair, add entries to table of the form:
-      ((src_ip, src_port), (xl_left_ip, xl_left_port)) to 
+      ((src_ip, src_port), (xl_left_ip, xl_left_port)) to
            ((xl_right_ip, xl_right_port), (dst_ip, dst_port)) and
-      ((dst_ip, dst_port), (xl_right_ip, xl_right_port)) to 
+      ((dst_ip, dst_port), (xl_right_ip, xl_right_port)) to
            ((xl_left_ip, xl_left_port), (src_ip, src_port)).
       ((xl_ip, xl_right_port), (dst_ip, dst_port)) to (src_ip, src_port).
     * if insertion succeeded, return the new table;
     * otherwise, return an error type indicating the problem. *)
-  val make_redirect_entry : N.t -> Cstruct.t -> (Ipaddr.t * int) 
-    -> (Ipaddr.t * int) -> insert_result Lwt.t
+  val add_redirect : t -> Cstruct.t -> endpoint -> endpoint -> insert_result Lwt.t
+
+  (** handle for accessing the store directly. *)
+  val store_of_t : t -> I.t
 
 end
 
@@ -58,8 +62,8 @@ type 'a layer = 'a Nat_decompose.layer
    for dispatch to I.write .
 *)
 
-val recalculate_transport_checksum : (Cstruct.t -> Cstruct.t list -> int) -> 
-  (ethernet layer * ip layer * transport layer) 
+val recalculate_transport_checksum : (Cstruct.t -> Cstruct.t list -> int) ->
+  (ethernet layer * ip layer * transport layer)
   -> (Cstruct.t * Cstruct.t)
 
 (* set the ethernet source address to the provided MAC address *)

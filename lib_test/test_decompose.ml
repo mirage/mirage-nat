@@ -60,8 +60,55 @@ let tcp_syn () =
   | Some (ethernet, ip, transport, payload) ->
     OUnit.assert_equal ~cmp:Cstruct.equal payload (Cstruct.create 0)
 
+let udp_payload () =
+  let pl = Cstruct.create Wire_structs.(sizeof_ethernet
+                                         + Ipv4_wire.sizeof_ipv4
+                                         + sizeof_udp + 4) in
+  (* ethernet layer *)
+  let ethernet_dst = Macaddr.of_string_exn "00:16:3e:2c:5a:99" in
+  let ethernet_src = Macaddr.of_string_exn "00:16:3e:01:00:e7" in
+  Wire_structs.set_ethernet_dst (Macaddr.to_bytes ethernet_dst) 0 pl;
+  Wire_structs.set_ethernet_src (Macaddr.to_bytes ethernet_src) 0 pl;
+  Wire_structs.set_ethernet_ethertype pl 0x0800;
+  (* ip layer *)
+  let ipv4 = Cstruct.shift pl Wire_structs.sizeof_ethernet in
+  Wire_structs.Ipv4_wire.set_ipv4_proto ipv4 17;
+  Wire_structs.Ipv4_wire.set_ipv4_src ipv4 (Ipaddr.V4.to_int32
+                                              (Ipaddr.V4.of_string_exn
+                                              "192.168.252.20"));
+  Wire_structs.Ipv4_wire.set_ipv4_dst ipv4 (Ipaddr.V4.to_int32
+                                              (Ipaddr.V4.of_string_exn
+                                              "5.153.225.51"));
+  Wire_structs.Ipv4_wire.set_ipv4_hlen_version ipv4 ((4 lsl 4) + 5);
+  Wire_structs.Ipv4_wire.set_ipv4_len ipv4 0x30;
+  Wire_structs.Ipv4_wire.set_ipv4_id ipv4 0x1d96;
+  Wire_structs.Ipv4_wire.set_ipv4_ttl ipv4 38;
+  Wire_structs.Ipv4_wire.set_ipv4_csum ipv4 0xd3a8;
+  (* udp layer *)
+  let udp = Cstruct.shift ipv4 Wire_structs.Ipv4_wire.sizeof_ipv4 in
+  Wire_structs.set_udp_source_port udp 0x1000;
+  Wire_structs.set_udp_dest_port udp 0x0fff;
+  Wire_structs.set_udp_checksum udp 0x00;
+  Wire_structs.set_udp_length udp (Wire_structs.sizeof_udp + 4);
+  let payload = Cstruct.shift udp Wire_structs.sizeof_udp in
+  Cstruct.set_uint8 payload 0 0xab;
+  Cstruct.set_uint8 payload 1 0x22;
+  Cstruct.set_uint8 payload 2 0xeb;
+  Cstruct.set_uint8 payload 3 0x44;
+  match Nat_decompose.layers pl with
+  | None ->
+    Cstruct.hexdump pl;
+    OUnit.assert_failure "Nat_decompose failed to parse this UDP packet"
+  | Some (ac_ethernet, ac_ip, ac_transport, ac_payload) ->
+    let check = OUnit.assert_equal ~printer:Cstruct.to_string ~cmp:Cstruct.equal in
+    check payload ac_payload;
+    check udp ac_transport;
+    check ipv4 ac_ip;
+    check pl ac_ethernet
+
 let tests = [
   "tcp_syn", `Quick, tcp_syn;
+  "udp_payload", `Quick, udp_payload;
 ]
 
 let () = Alcotest.run "Mirage_nat.Nat_decompose" [ "tests", tests ]

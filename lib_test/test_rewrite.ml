@@ -1,23 +1,21 @@
 open OUnit2
 open Ipaddr
-open Nat_rewrite
+open Nat_types
 open Nat_decompose
 open Test_lib
 
 let zero_cstruct cs =
-  Cstruct.memset cs 0;
-  cs
+  Cstruct.memset cs 0; cs
 
-type protocol = Nat_lookup.protocol
 let int_of_protocol = function
-  | Nat_lookup.Udp -> 17
-  | Nat_lookup.Tcp -> 6
+  | Udp -> 17
+  | Tcp -> 6
 
 let (>>=) = Lwt.bind
 
 let ipv4_of_str = Ipaddr.V4.of_string_exn
 
-module R = Nat_rewrite.Make(N)
+module Rewriter = Nat_rewrite.Make(Irmin_mem.Make)(Unix_clock)(Unix_time)
 
 module Constructors = struct
 
@@ -72,14 +70,13 @@ module Constructors = struct
     (* they also don't have options *)
     set_tcp_sequence tcp_buf (Int32.of_int 0x432af310);
     set_tcp_ack_number tcp_buf Int32.zero;
-    set_tcp_dataoff tcp_buf 5;
+    set_tcp_dataoff tcp_buf 0x50;
     set_tcp_flags tcp_buf 2; (* syn *)
     set_tcp_window tcp_buf 536; (* default_mss from tcp/window.ml *)
     (* leave checksum and urgent pointer unset *)
     (frame, len + sizeof_tcp)
 
   let add_udp (frame, len) source_port dest_port =
-    (* also cribbed from mirage-tcpip *)
     let frame = Cstruct.set_len frame (len + Wire_structs.sizeof_udp) in
     let udp_buf = Cstruct.shift frame len in
     Wire_structs.set_udp_source_port udp_buf source_port;
@@ -88,28 +85,25 @@ module Constructors = struct
     (* leave checksum unset *)
     (frame, len + Wire_structs.sizeof_udp)
 
-  (* basic_tcp_frame should return a frame that needs rewriting in the supplied direction --
-   * i.e., if direction = Destination, one from 4.141.2.6 (dst)
-     to 128.104.108.1 (xl), which needs to have
-    * 128.104.108.1 (xl) rewritten to 192.168.108.26 (src) *)
-
-  let full_packet
-      ~proto ~ttl ~src ~dst ~sport ~dport =
+  let full_packet ~proto ~ttl ~src ~dst ~sport ~dport =
     let smac_addr = Macaddr.of_string_exn "00:16:3e:ff:00:ff" in
     let (frame, len) =
       basic_ipv4_frame proto src dst ttl smac_addr
     in
-    let frame, _ =
-      let open Nat_lookup in
+    let frame, final_len =
       let add_transport = match proto with
       | Tcp -> add_tcp
       | Udp -> add_udp
       in
       add_transport (frame, len) sport dport
     in
+    Printf.printf "full frame:\n";
+    Cstruct.hexdump frame;
+    Printf.printf "payload:\n";
+    Cstruct.hexdump (Cstruct.shift frame final_len);
     frame
 
-  let frame_and_redirect_table (direction : Nat_rewrite.direction)
+  let frame_and_redirect_table direction
       ~proto ~ttl
       ~outside_src ~external_xl ~internal_xl ~internal_client
       ~outside_sport ~external_xl_port ~internal_xl_port ~internal_client_port =
@@ -123,35 +117,23 @@ module Constructors = struct
                          ~sport:internal_xl_port ~dport:internal_client_port
     in
     let table () =
-      let mappings = Nat_translations.map_redirect
-          ~left:((V4 outside_src), outside_sport)
-          ~right:((V4 external_xl), external_xl_port)
-          ~translate_left:((V4 internal_xl), internal_xl_port)
-          ~translate_right:((V4 internal_client), internal_client_port)
-      in
-      N.empty (Irmin_mem.config ()) >>= fun t ->
-      insert_mappings t expiry proto mappings >>= function
-      | None -> assert_failure "Failed to insert test data into table structure"
-      | Some t -> Lwt.return t
+      Rewriter.empty (Irmin_mem.config ()) >>= fun t ->
+      Rewriter.add_redirect t frame
+          ((V4 internal_xl), internal_xl_port)
+          ((V4 internal_client), internal_client_port) >>= function
+      | Ok -> Lwt.return t
+      | Overlap | Unparseable -> assert_failure "Failed to insert test data into table structure"
     in
     table () >>= fun table -> Lwt.return (frame, table)
 
-  let frame_and_nat_table (direction : Nat_rewrite.direction)
+  let frame_and_nat_table
       ~proto ~ttl ~src ~dst ~xl ~sport ~dport ~xlport =
-    let frame =
-      match direction with
-      | Source -> full_packet ~proto ~ttl ~src ~dst ~sport ~dport
-      | Destination ->
-        full_packet ~proto ~ttl ~src:dst ~dst:xl ~sport:dport ~dport:xlport
-    in
+    let frame = full_packet ~proto ~ttl ~src ~dst ~sport ~dport in
     let table () =
-      let mappings = Nat_translations.map_nat
-          ~left:((V4 src), sport) ~right:((V4 dst), dport) ~translate_left:((V4 xl), xlport)
-      in
-      N.empty (Irmin_mem.config ()) >>= fun t ->
-      insert_mappings t expiry proto mappings >>= function
-      | None -> assert_failure "Failed to insert test data into table structure"
-      | Some t -> Lwt.return t
+      Rewriter.empty (Irmin_mem.config ()) >>= fun t ->
+      Rewriter.add_nat t frame ((V4 xl), xlport) >>= function
+      | Ok -> Lwt.return t
+      | Overlap | Unparseable -> assert_failure "Failed to insert test data into table structure"
     in
     table () >>= fun table -> Lwt.return (frame, table)
 
@@ -173,8 +155,7 @@ let check_entry expected (actual : ((Ipaddr.t * int) * (Ipaddr.t * int)) option)
   in
   match actual with
   | Some a -> assert_equal ~printer expected a
-  | None -> assert_failure
-              "an expected entry was missing entirely"
+  | None -> assert_failure "an expected entry was missing entirely"
 
 (* given a source IP, destination IP, protocol, and TTL,
    check to see whether the provided Ethernet frame contains an IPv4 packet
@@ -186,7 +167,7 @@ let assert_ipv4_has exp_src exp_dst exp_proto exp_ttl xl_frame =
   | Some ipv4 ->
     let open Wire_structs.Ipv4_wire in
     (* should still be an ipv4 packet *)
-    assert_equal 0x0800 (Wire_structs.get_ethernet_ethertype xl_frame);
+    assert_equal ~printer:string_of_int 0x0800 (Wire_structs.get_ethernet_ethertype xl_frame);
 
     assert_equal ~printer (Ipaddr.V4.to_int32 (exp_src)) (get_ipv4_src ipv4);
     assert_equal ~printer (Ipaddr.V4.to_int32 (exp_dst)) (get_ipv4_dst ipv4);
@@ -204,35 +185,34 @@ let assert_transport_has exp_sport exp_dport xl_frame =
 let assert_payloads_match expected actual =
   match (Nat_decompose.layers expected, Nat_decompose.layers actual) with
   | Some (_, _, _, exp_payload), Some (_, _, _, actual_payload) ->
-    OUnit.assert_equal ~cmp:Cstruct.equal exp_payload actual_payload
+    Printf.printf "Complete packet (expected):\n";
+    Cstruct.hexdump expected;
+    Printf.printf "Complete packet (actual):\n";
+    Cstruct.hexdump actual;
+    OUnit.assert_equal ~msg:"Payload match failure" ~printer:Cstruct.to_string ~cmp:Cstruct.equal exp_payload actual_payload
   | _, _ -> OUnit.assert_failure
               "At least one packet in a payload equality assertion couldn't be decomposed"
 
 let assert_translates table direction frame =
-  R.translate table direction frame >>= function
-  | None -> assert_failure "Expected translateable frame wasn't rewritten"
-  | Some xl_frame -> Lwt.return xl_frame
+  Rewriter.translate table direction frame >>= function
+  | Untranslated -> assert_failure "Expected translateable frame wasn't rewritten"
+  | Translated -> Lwt.return_unit
 
-let test_nat_ipv4 direction proto =
+let test_nat_ipv4 proto =
   let ttl = 4 in
   let open Default_values in
-  Constructors.frame_and_nat_table direction ~proto ~ttl ~src ~dst ~xl ~sport
+  Constructors.frame_and_nat_table ~proto ~ttl ~src ~dst ~xl ~sport
     ~dport ~xlport >>= fun (frame, table) ->
-  assert_payloads_match frame frame;
-  assert_translates table direction frame >>= fun xl_frame ->
-  assert_payloads_match frame xl_frame;
-  match direction with
-  | Destination ->
-    assert_ipv4_has dst src proto (ttl - 1) xl_frame;
-    assert_transport_has dport sport xl_frame;
-    Lwt.return_unit
-  | Source ->
-    assert_ipv4_has xl dst proto (ttl - 1) xl_frame;
-    assert_transport_has xlport dport xl_frame;
-    Lwt.return_unit
+  assert_translates table Source frame >>= fun () ->
+  Constructors.frame_and_nat_table ~proto ~ttl ~src ~dst ~xl ~sport
+    ~dport ~xlport >>= fun (bare_frame, _) ->
+  assert_payloads_match bare_frame frame;
+  assert_ipv4_has xl dst proto (ttl - 1) frame;
+  assert_transport_has xlport dport frame;
+  Lwt.return_unit
 
-let test_make_redirect_entry_valid_pkt () =
-  let proto = Nat_lookup.Udp in
+let test_add_redirect_valid_pkt () =
+  let proto = Udp in
   let internal_client = ipv4_of_str "172.16.2.30" in
   let outside_requester = ipv4_of_str "1.2.3.4" in
   let nat_external_ip = ipv4_of_str "208.121.103.4" in
@@ -243,146 +223,146 @@ let test_make_redirect_entry_valid_pkt () =
       ~dst:nat_external_ip ~sport:outside_requester_port
       ~dport:nat_external_port
   in
-  N.empty (Irmin_mem.config ()) >>= fun t ->
-  R.make_redirect_entry t frame
-          ((Ipaddr.V4 nat_internal_ip), nat_internal_port)
-          ((Ipaddr.V4 internal_client), internal_client_port) >>= function
-  | R.Overlap -> assert_failure "make_redirect_entry claimed overlap when inserting into an
-                 empty table"
-  | R.Unparseable ->
-    Printf.printf "Allegedly unparseable frame follows:\n";
-    Cstruct.hexdump frame;
-    assert_failure "make_redirect_entry claimed that a reference packet was unparseable"
-  | R.Ok t ->
-    (* make sure table actually has the entries we expect *)
-    N.lookup t proto (V4 internal_client, internal_client_port)
-        (V4 nat_internal_ip, nat_internal_port) >>= fun internal_client_lookup ->
-    N.lookup t proto
-        (V4 outside_requester, outside_requester_port)
-        (V4 nat_external_ip, nat_external_port) >>= fun outside_requester_lookup ->
-    check_entry
-      (((V4 nat_external_ip), nat_external_port),
-       ((V4 outside_requester), outside_requester_port)) internal_client_lookup;
-    check_entry
-      (((V4 nat_internal_ip), nat_internal_port),
-       ((V4 internal_client), internal_client_port)) outside_requester_lookup;
-    (* trying the same operation again should not give us an Overlap failure,
-       just update the expiration time *)
-    R.make_redirect_entry t frame
-            ((Ipaddr.V4 nat_internal_ip), nat_internal_port)
-            ((Ipaddr.V4 internal_client), internal_client_port) >>= function
-    | R.Overlap -> assert_failure "overlap claimed for update of entry"
-    | R.Unparseable ->
+  Constructors.frame_and_redirect_table Source ~proto ~ttl:52 
+    ~outside_src:outside_requester ~external_xl:nat_external_ip
+    ~outside_sport:outside_requester_port ~external_xl_port:nat_external_port
+    ~internal_xl:nat_internal_ip ~internal_xl_port:nat_internal_port
+    ~internal_client:internal_client ~internal_client_port:internal_client_port
+  >>= fun (frame, table) ->
+  assert_translates table Source frame >>= fun () ->
+  let orig_frame = Constructors.full_packet ~proto ~ttl:52 ~src:outside_requester
+      ~dst:nat_external_ip ~sport:outside_requester_port
+      ~dport:nat_external_port
+  in
+  assert_payloads_match frame orig_frame;
+  (* return direction frame translates too *)
+  let reverse_packet =
+    Constructors.full_packet ~proto ~ttl:52 ~src:internal_client
+      ~sport:internal_client_port ~dst:nat_internal_ip ~dport:nat_internal_port
+  in
+  assert_translates table Destination reverse_packet >>= fun () ->
+  let orig_reverse_packet =
+    Constructors.full_packet ~proto ~ttl:52 ~src:internal_client
+      ~sport:internal_client_port ~dst:nat_internal_ip ~dport:nat_internal_port
+  in
+  assert_payloads_match reverse_packet orig_reverse_packet;
+  Rewriter.add_redirect table orig_frame
+    ((Ipaddr.V4 nat_internal_ip), nat_internal_port)
+    ((Ipaddr.V4 internal_client), internal_client_port) >>= function
+    | Overlap -> assert_failure "overlap claimed for update of entry"
+    | Unparseable ->
       Printf.printf "Allegedly unparseable frame follows:\n";
       Cstruct.hexdump frame;
-      assert_failure "make_redirect_entry claimed that a reference packet was unparseable"
-    | R.Ok t ->
+      assert_failure "add_redirect claimed that a reference packet was unparseable"
+    | Ok ->
       (* attempting to add another entry which partially overlaps should fail *)
-      R.make_redirect_entry t frame
+      Rewriter.add_redirect table orig_frame
         ((Ipaddr.of_string_exn "8.8.8.8"), nat_internal_port)
         ((Ipaddr.V4 internal_client), internal_client_port) >>= function
-      | R.Overlap -> Lwt.return_unit
-      | R.Ok _ -> assert_failure "overlapping entry addition allowed"
-      | R.Unparseable ->
+      | Overlap -> Lwt.return_unit
+      | Ok -> assert_failure "overlapping entry addition allowed"
+      | Unparseable ->
         Printf.printf "Allegedly unparseable frame follows:\n";
         Cstruct.hexdump frame;
-        assert_failure "make_redirect_entry claimed that a reference packet was unparseable"
+        assert_failure "add_redirect claimed that a reference packet was unparseable"
 
-let test_make_nat_entry_valid_pkt () =
+let test_add_nat_valid_pkt () =
   let open Default_values in
-  let proto = Nat_lookup.Udp in
+  let proto = Udp in
   let frame = Constructors.full_packet ~proto ~ttl:52 ~src ~dst ~sport ~dport in
-  N.empty (Irmin_mem.config ()) >>= fun t ->
-  R.make_nat_entry t frame (Ipaddr.V4 xl) xlport >>= function
-  | Overlap -> assert_failure "make_nat_entry claimed overlap when inserting into an
+  Rewriter.empty (Irmin_mem.config ()) >>= fun table ->
+  Rewriter.add_nat table frame ((V4 xl), xlport) >>= function
+  | Overlap -> assert_failure "add_nat claimed overlap when inserting into an
                  empty table"
   | Unparseable ->
     Printf.printf "Allegedly unparseable frame follows:\n";
     Cstruct.hexdump frame;
-    assert_failure "make_nat_entry claimed that a reference packet was unparseable"
-  | Ok t ->
+    assert_failure "add_nat claimed that a reference packet was unparseable"
+  | Ok ->
     (* make sure table actually has the entries we expect *)
-    N.lookup t proto (V4 src, sport) (V4 dst, dport) >>= fun src_lookup ->
-    N.lookup t proto (V4 dst, dport) (V4 xl, xlport) >>= fun dst_lookup ->
-    check_entry (((V4 xl), xlport), ((V4 dst), dport)) src_lookup;
-    check_entry (((V4 dst), dport), ((V4 src), sport)) dst_lookup;
+    assert_translates table Source frame >>= fun () ->
+    let orig_frame = Constructors.full_packet ~proto ~ttl:52 ~src ~dst ~sport ~dport in
+    assert_payloads_match frame orig_frame;
+    let reverse_frame = Constructors.full_packet ~proto ~ttl:52 ~src:dst ~dst:xl
+        ~sport:dport ~dport:xlport in
+    assert_translates table Destination reverse_frame >>= fun () ->
+    let orig_reverse_frame = Constructors.full_packet ~proto ~ttl:52 ~src:dst ~dst:xl
+        ~sport:dport ~dport:xlport in
+    assert_payloads_match orig_reverse_frame reverse_frame;
     (* trying the same operation again should update the expiration time *)
-    R.make_nat_entry t frame (Ipaddr.V4 xl) xlport >>= function
-    | R.Overlap ->  assert_failure "make_nat_entry disallowed an update"
-    | R.Unparseable ->
+    Rewriter.add_nat table orig_frame ((V4 xl), xlport) >>= function
+    | Overlap -> assert_failure "add_nat disallowed an update"
+    | Unparseable ->
       Printf.printf "Allegedly unparseable frame follows:\n";
       Cstruct.hexdump frame;
-      assert_failure "make_nat_entry claimed that a reference packet was unparseable"
-    | R.Ok t ->
+      assert_failure "add_nat claimed that a reference packet was unparseable"
+    | Ok ->
       (* a half-match should fail with Overlap *)
       let frame = Constructors.full_packet ~proto ~ttl:52 ~src:xl ~dst ~sport ~dport in
-      R.make_nat_entry t frame (V4 xl) xlport >>= function
-      | R.Ok t -> assert_failure "overlap wasn't detected"
-      | R.Unparseable ->
+      Rewriter.add_nat table frame ((Ipaddr.V4 xl), xlport) >>= function
+      | Ok -> assert_failure "overlap wasn't detected"
+      | Unparseable ->
         Printf.printf "Allegedly unparseable frame follows:\n";
         Cstruct.hexdump frame;
-        assert_failure "make_nat_entry claimed that a reference packet was unparseable"
-      | R.Overlap -> Lwt.return_unit
+        assert_failure "add_nat claimed that a reference packet was unparseable"
+      | Overlap -> Lwt.return_unit
 
 
-let test_make_nat_entry_nonsense () =
+let test_add_nat_nonsense () =
   (* sorts of bad packets: broadcast packets,
      non-tcp/udp/icmp packets *)
   let open Default_values in
-  let proto = Nat_lookup.Udp in
+  let proto = Udp in
   let frame_size = (Wire_structs.sizeof_ethernet + Wire_structs.Ipv4_wire.sizeof_ipv4) in
   let mangled_looking, _ = Constructors.basic_ipv4_frame ~frame_size proto src dst 60 smac_addr in
-  N.empty (Irmin_mem.config ()) >>= fun t ->
-  R.make_nat_entry t mangled_looking (Ipaddr.V4 xl) xlport >>= function
-  | R.Ok t -> assert_failure "make_nat_entry happily took a mangled packet"
-  | R.Overlap -> assert_failure
-                 "make_nat_entry claimed a mangled packet was already in the table"
-  | R.Unparseable -> Lwt.return_unit
+  Rewriter.empty (Irmin_mem.config ()) >>= fun t ->
+  Rewriter.add_nat t mangled_looking ((Ipaddr.V4 xl), xlport) >>= function
+  | Rewriter.Ok -> assert_failure "add_nat happily took a mangled packet"
+  | Rewriter.Overlap -> assert_failure
+                 "add_nat claimed a mangled packet was already in the table"
+  | Rewriter.Unparseable -> Lwt.return_unit
 
-let test_make_nat_entry_broadcast () =
+let test_add_nat_broadcast () =
   let open Default_values in
-  let proto = Nat_lookup.Udp in
+  let proto = Udp in
   let broadcast_dst = ipv4_of_str "255.255.255.255" in
   let broadcast = Constructors.full_packet ~proto:Tcp ~ttl:30 ~src
       ~dst:broadcast_dst ~sport ~dport in
-  N.empty (Irmin_mem.config ()) >>= fun t ->
-  R.make_nat_entry t broadcast (Ipaddr.V4 xl)
-    xlport >>= function
-  | R.Ok _ | R.Overlap -> assert_failure "make_nat_entry operated on a broadcast packet"
-  | R.Unparseable ->
+  Rewriter.empty (Irmin_mem.config ()) >>= fun t ->
+  Rewriter.add_nat t broadcast ((Ipaddr.V4 xl), xlport) >>= function
+  | Ok | Overlap -> assert_failure "add_nat operated on a broadcast packet"
+  | Unparseable ->
     (* try just an ethernet frame *)
     let e = zero_cstruct (Cstruct.create Wire_structs.sizeof_ethernet) in
-    N.empty (Irmin_mem.config ()) >>= fun t ->
-    R.make_nat_entry t e (Ipaddr.V4 xl) xlport >>= function
-    | Ok _ | Overlap ->
-      assert_failure "make_nat_entry claims to have succeeded with a bare ethernet frame"
+    Rewriter.empty (Irmin_mem.config ()) >>= fun t ->
+    Rewriter.add_nat t e ((Ipaddr.V4 xl), xlport) >>= function
+    | Ok | Overlap ->
+      assert_failure "add_nat claims to have succeeded with a bare ethernet frame"
     | Unparseable -> Lwt.return_unit
 
 let lwt_run f () = Lwt_main.run (f ())
 
 let correct_mappings =
-  let open Nat_lookup in
+  let open Nat_types in
   [
-  "IPv4 TCP NAT source rewrites", `Quick, lwt_run (fun () -> test_nat_ipv4 Source Udp) ;
-  "IPv4 UDP NAT source rewrites", `Quick, lwt_run (fun () -> test_nat_ipv4 Source Tcp) ;
-  "IPv4 TCP NAT destination rewrites", `Quick, lwt_run (fun () -> test_nat_ipv4 Destination Udp) ;
-  "IPv4 UDP NAT destination rewrites", `Quick, lwt_run (fun () -> test_nat_ipv4 Destination Tcp) ;
+    "IPv4 UDP NAT rewrites", `Quick, lwt_run (fun () -> test_nat_ipv4 Udp) ;
+    "IPv4 TCP NAT rewrites", `Quick, lwt_run (fun () -> test_nat_ipv4 Tcp) ;
+  ]
+
+let add_nat = [
+  "add_nat makes entries", `Quick, lwt_run test_add_nat_valid_pkt;
+  "add_nat refuses nonsense frames", `Quick, lwt_run test_add_nat_nonsense;
+  "add_nat refuses broadcast frames", `Quick, lwt_run test_add_nat_broadcast;
 ]
 
-let make_nat_entry = [
-  "make_nat_entry makes entries", `Quick, lwt_run test_make_nat_entry_valid_pkt;
-  "make_nat_entry refuses nonsense frames", `Quick, lwt_run test_make_nat_entry_nonsense;
-  "make_nat_entry refuses broadcast frames", `Quick, lwt_run test_make_nat_entry_broadcast;
-]
-
-let make_redirect_entry = [
-    (* TODO: test make_nat_entry in non-ipv4 contexts; make_redirect_entry more
+let add_redirect = [
+    (* TODO: test add_nat in non-ipv4 contexts; add_redirect more
     fully *)
-    "make_redirect_entry makes entries", `Quick, lwt_run test_make_redirect_entry_valid_pkt;
+    "add_redirect makes entries", `Quick, lwt_run test_add_redirect_valid_pkt;
   ]
 
 let () = Alcotest.run "Mirage_nat.Nat_rewrite" [
     "correct_mappings", correct_mappings;
-    "make_nat_entry", make_nat_entry;
-    "make_redirect_entry", make_redirect_entry;
+    "add_nat", add_nat;
+    "add_redirect", add_redirect;
   ]

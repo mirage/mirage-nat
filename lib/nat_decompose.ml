@@ -48,7 +48,7 @@ let proto_of_ip ip_layer =
   | 6 -> Wire_structs.Ipv6_wire.get_ipv6_nhdr ip_layer
   | _ -> failwith "invalid ip type in packet"
 
-let ip_header_length hlen_version = 
+let ip_header_length hlen_version =
   match ((hlen_version land 0xf0) lsr 4) with
   | 4 -> (* length (in words, not bytes) is in the other half of hlen_version *)
     Some ((hlen_version land 0x0f) * 4)
@@ -65,12 +65,12 @@ let transport_and_above_of_ip ip =
   let hlen_version = Wire_structs.Ipv4_wire.get_ipv4_hlen_version ip in
   match ip_header_length hlen_version with
   | None -> None
-  | Some n -> 
+  | Some n ->
     match long_enough (proto_of_ip ip) with
     | None -> None
     | Some minimum_tx_header ->
       if ((Cstruct.len ip) < (n + minimum_tx_header)) then
-        None 
+        None
       else
         Some (Cstruct.shift ip n)
 
@@ -96,11 +96,12 @@ let ports_of_transport tx_layer =
 let ethip_headers (e, i) =
   let ethersize = Wire_structs.sizeof_ethernet in
   match ip_header_length (Wire_structs.Ipv4_wire.get_ipv4_hlen_version i) with
-  | Some ip_len when Cstruct.len e >= (ethersize + ip_len) -> 
+  | Some ip_len when Cstruct.len e >= (ethersize + ip_len) ->
     Some (Cstruct.sub e 0 (ethersize + ip_len))
   | None | Some _ -> None
 
 let layers frame =
+  MProf.Trace.label "Nat_decompose.layers";
   match ip_and_above_of_frame frame with
   | None -> None
   | Some ip ->
