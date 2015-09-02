@@ -1,8 +1,3 @@
-(* TODO: what are the data types on protocol numbers?  no explicit
-   types in tcpip/lib/ipv4.ml, just matches on the number
-   straight from the struct, so we'll do that too although we
-   should instead restrict to tcp or udp *)
-
 (* TODO: types should be more complex and allow for entries mapping
    networks and port ranges (with logic disallowing many:many mappings), e.g.
    type One = port
@@ -16,15 +11,6 @@ open Nat_types
 type mode =
   | Redirect
   | Nat
-
-let string_of_proto = function
-  | Tcp -> "tcp"
-  | Udp -> "udp"
-
-(* subsume nat_lookup in nat_rewrite and provide some interfaces for static
-   mappings a la mirage-mimic *)
-
-let node proto = [ string_of_proto proto ]
 
 let (>>=) = Lwt.bind
 
@@ -199,25 +185,29 @@ module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
 
   let expired time = (Clock.now () |> Int64.to_int) > time
   let task () = Irmin.Task.create ~date:(Clock.now ()) ~owner
-(* 
+  
   let rec tick t () =
     MProf.Trace.label "Nat_lookup.tick";
     (* only do expiration for UDP, since we intend to do something state-based
        for TCP *)
-    let node = node Udp in
     let expiry_check_interval = 6. in
-    I.head_exn (t.store "starting expiry") >>= fun head ->
-    I.of_head t.config (task ()) head >>= fun our_br ->
-    I.read_exn (our_br "read for timeouts") node >>= fun table ->
-    let now = Clock.now () |> Int64.to_int in
-    let updated = T.expire table now in
-    match (T.equal updated table) with
-    | true -> Time.sleep expiry_check_interval >>= tick t
-    | false ->
-      let message = "tick: removed expired entries as of " ^ (string_of_int now) in
-      I.update (our_br message) node updated >>= fun () ->
+    I.head (t.store "Nat_lookup.tick: starting expiry") >>= function
+    | None -> Time.sleep expiry_check_interval >>= tick t (* nothing to expire! *)
+    | Some head ->
+      I.of_head t.config (task ()) head >>= fun our_br ->
+      let now = Clock.now () |> Int64.to_int in
+      let unwrap (Nat_table.Entry.Confirmed (time, entry)) = Lwt.return time in
+      let expire key value_thread =
+        value_thread >>= unwrap >>= fun time ->
+        if time <= now then
+          I.remove (t.store "Nat_lookup.tick: removing expired entry for %s")
+                      key
+        else
+          Lwt.return_unit
+      in
+      I.iter (our_br "Nat_lookup.tick: scan for expired entries") expire >>= fun () ->
       I.merge_exn "merge expiry branch" our_br ~into:t.store >>= fun () ->
-      Time.sleep expiry_check_interval >>= tick t *)
+      Time.sleep expiry_check_interval >>= tick t
 
   let empty config =
     I.create config (task ()) >>= fun store ->
@@ -225,7 +215,7 @@ module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
       config;
       store;
     } in
-    (* Lwt.async (tick t); *)
+    Lwt.async (tick t);
     Lwt.return t
 
   let store_of_t t = t.store "read for store_of_t"
