@@ -200,8 +200,7 @@ module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
       let expire key value_thread =
         value_thread >>= unwrap >>= fun time ->
         if time <= now then
-          I.remove (t.store "Nat_lookup.tick: removing expired entry for %s")
-                      key
+          I.remove (t.store "Nat_lookup.tick: removing expired UDP entry") key 
         else
           Lwt.return_unit
       in
