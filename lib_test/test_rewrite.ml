@@ -97,10 +97,6 @@ module Constructors = struct
       in
       add_transport (frame, len) sport dport
     in
-    Printf.printf "full frame:\n";
-    Cstruct.hexdump frame;
-    Printf.printf "payload:\n";
-    Cstruct.hexdump (Cstruct.shift frame final_len);
     frame
 
   let frame_and_redirect_table direction
@@ -340,6 +336,87 @@ let test_add_nat_broadcast () =
       assert_failure "add_nat claims to have succeeded with a bare ethernet frame"
     | Unparseable -> Lwt.return_unit
 
+type packet_variables = {
+  src : Ipaddr.V4.t;
+  dst : Ipaddr.V4.t;
+  ttl : Cstruct.uint8;
+  sport : Cstruct.uint16;
+  dport : Cstruct.uint16;
+}
+
+let add_many_entries how_many =
+  let random_ttl () = (Random.int 255) + 1 in
+  let rec random_ipv4 () =
+    let addr = Ipaddr.V4.of_int32 (Random.int32 Int32.max_int) in
+    match scope (V4 addr) with
+    | Global | Organization -> addr
+    | Point | Link | Interface | Site | Admin ->
+      Printf.printf "unusable address %s generated; trying again\n%!" (Ipaddr.V4.to_string addr);
+      random_ipv4 ()
+  in
+  let random_port () = Random.int 65536 in
+  let random_packet () =
+    let src = random_ipv4 () in
+    let dst = random_ipv4 () in
+    let sport = random_port () in
+    let dport = random_port () in
+    let ttl = random_ttl () in
+    let r = { src; dst; sport; dport; ttl } in
+    (Constructors.full_packet ~proto:Tcp ~ttl ~src ~dst ~sport ~dport, r)
+  in
+  (* test results are a little easier to reason about if we mimic the expected
+     behaviour of users -- NATting stuff from gateway IP to another IP
+     downstream from a gateway, both of which are fixed *)
+  Random.self_init ();
+  let fixed_internal_ip = random_ipv4 () in
+  let fixed_external_ip = random_ipv4 () in
+  Rewriter.empty (Irmin_mem.config ()) >>= fun t ->
+  let rec shove_entries = function
+    | n when n <= 0 -> Lwt.return_unit
+    | n ->
+      Printf.printf "%d more entries...\n%!" n;
+      let (packet, values) = random_packet () in
+      Rewriter.translate t Source packet >>= function
+      | Translated ->
+        Printf.printf "already a Source entry for the packet; trying again\n%!";
+        shove_entries n (* generated an overlap; try again *)
+      | Untranslated ->
+        Rewriter.translate t Destination packet >>= function 
+        | Translated ->
+          Printf.printf "already a Destination entry for the packet; trying again\n%!";
+          shove_entries n 
+        | Untranslated ->
+          let add_fn =
+            (* bias creation of NAT rules over redirects *)
+            match (Random.int 10) with
+            | 0 ->
+              Printf.printf "adding a redirect rule\n%!";
+              Rewriter.add_redirect t packet ((V4 fixed_external_ip), random_port ())
+                ((V4 fixed_internal_ip), random_port ())
+            | _ ->
+              Printf.printf "adding a NAT rule\n%!";
+              Rewriter.add_nat t packet ((V4 fixed_external_ip), random_port ())
+          in
+          add_fn >>= function
+          | Unparseable ->
+            let print_ip ip = Printf.sprintf "%x (%s)"
+                (Int32.to_int (Ipaddr.V4.to_int32 ip))
+                (Ipaddr.V4.to_string ip) in
+            Printf.printf "With %d entries yet to go,
+            Failure parsing this packet, which was automatically generated from
+            the following values:\n" n;
+            Printf.printf "source: %s, %x\n" (print_ip values.src) values.sport;
+            Printf.printf "destination: %s, %x\n" (print_ip values.dst) values.dport;
+            Printf.printf "ttl: %x\n" values.ttl;
+            Cstruct.hexdump packet;
+            OUnit.assert_failure "Parse failure"
+          | Overlap ->
+            Printf.printf "overlap between entries; trying again\n%!";
+            shove_entries n
+          | Ok -> shove_entries (n-1)
+  in
+  shove_entries how_many
+
 let lwt_run f () = Lwt_main.run (f ())
 
 let correct_mappings =
@@ -359,10 +436,16 @@ let add_redirect = [
     (* TODO: test add_nat in non-ipv4 contexts; add_redirect more
     fully *)
     "add_redirect makes entries", `Quick, lwt_run test_add_redirect_valid_pkt;
-  ]
+]
+
+let many_entries = [
+  "many entries are added successfully", `Quick, lwt_run (fun () ->
+      add_many_entries 200);
+]
 
 let () = Alcotest.run "Mirage_nat.Nat_rewrite" [
     "correct_mappings", correct_mappings;
     "add_nat", add_nat;
     "add_redirect", add_redirect;
+    "many_entries", many_entries;
   ]

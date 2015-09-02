@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: a54299c0739e5bec3834dc92a3268845)
+# DO NOT EDIT (digest: 2b4af036c5bf146a6e5787ed3941a58c)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -49,23 +49,23 @@ true: annot, bin_annot
 <lib_test/*.ml{,i,y}>: pkg_arbitrary-network
 <lib_test/*.ml{,i,y}>: pkg_quickcheck
 # Executable test_decompose
-"lib_test/test_decompose.byte": oasis_executable_test_decompose_byte
+<lib_test/test_decompose.{native,byte}>: oasis_executable_test_decompose_byte
 <lib_test/*.ml{,i,y}>: oasis_executable_test_decompose_byte
-"lib_test/test_decompose.byte": pkg_alcotest
-"lib_test/test_decompose.byte": pkg_cstruct
-"lib_test/test_decompose.byte": pkg_ipaddr
-"lib_test/test_decompose.byte": pkg_irmin
-"lib_test/test_decompose.byte": pkg_irmin-network-datastores
-"lib_test/test_decompose.byte": pkg_irmin.mem
-"lib_test/test_decompose.byte": pkg_lwt
-"lib_test/test_decompose.byte": pkg_mirage-profile
-"lib_test/test_decompose.byte": pkg_oUnit
-"lib_test/test_decompose.byte": pkg_sexplib
-"lib_test/test_decompose.byte": pkg_sexplib.syntax
-"lib_test/test_decompose.byte": pkg_tc
-"lib_test/test_decompose.byte": pkg_tcpip
-"lib_test/test_decompose.byte": use_mirage-nat
-"lib_test/test_decompose.byte": custom
+<lib_test/test_decompose.{native,byte}>: pkg_alcotest
+<lib_test/test_decompose.{native,byte}>: pkg_cstruct
+<lib_test/test_decompose.{native,byte}>: pkg_ipaddr
+<lib_test/test_decompose.{native,byte}>: pkg_irmin
+<lib_test/test_decompose.{native,byte}>: pkg_irmin-network-datastores
+<lib_test/test_decompose.{native,byte}>: pkg_irmin.mem
+<lib_test/test_decompose.{native,byte}>: pkg_lwt
+<lib_test/test_decompose.{native,byte}>: pkg_mirage-profile
+<lib_test/test_decompose.{native,byte}>: pkg_oUnit
+<lib_test/test_decompose.{native,byte}>: pkg_sexplib
+<lib_test/test_decompose.{native,byte}>: pkg_sexplib.syntax
+<lib_test/test_decompose.{native,byte}>: pkg_tc
+<lib_test/test_decompose.{native,byte}>: pkg_tcpip
+<lib_test/test_decompose.{native,byte}>: use_mirage-nat
+<lib_test/test_decompose.{native,byte}>: custom
 # Executable test_rewrite
 "lib_test/test_rewrite.byte": oasis_executable_test_rewrite_byte
 <lib_test/*.ml{,i,y}>: oasis_executable_test_rewrite_byte

@@ -1,5 +1,3 @@
-open Sexplib.Std
-
 type direction = | Source | Destination
 
 type protocol = | Udp | Tcp

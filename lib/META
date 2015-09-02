@@ -1,6 +1,6 @@
 # OASIS_START
-# DO NOT EDIT (digest: 7fcf8b75c88777fbc11357f59bd78924)
-version = "0.5.0"
+# DO NOT EDIT (digest: 1c968674f46de19ff0c382abd0a20916)
+version = "0.6.0"
 description = "an embryonic NAT module"
 requires =
 "ipaddr tcpip cstruct sexplib sexplib.syntax tc irmin-network-datastores irmin irmin.mem lwt mirage-profile"
