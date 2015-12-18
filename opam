@@ -18,12 +18,16 @@ remove: ["ocamlfind" "remove" "mirage-nat"]
 depends: [
   "ocamlfind" {build}
   "ipaddr"
-  "irmin" { >= "0.9.8" }
-  "irmin-network-datastores"
   "mirage-profile"
   "lwt"
-  "tcpip" { >= "2.2.3" }
+  "tcpip" { >= "2.6.1" }
   "ounit" {test}
   "alcotest" {test}
   "arbitrary-test" {test}
+]
+depopts: [
+  "irmin-network-datastores"
+]
+conflicts: [
+  "irmin-network-datastores" { < "0.1" }
 ]

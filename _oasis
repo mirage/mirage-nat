@@ -14,8 +14,21 @@ Flag randomized
   Description: build randomized tests (requires arbitrary-network)
   Default: false
 
+Flag irmin
+  Description: build Irmin-backed NAT table
+  Default: false
+
 Library "mirage-nat"
   Path: lib
+  Findlibname: mirage-nat
+  Modules: Nat_rewrite, Nat_translations, Nat_decompose, Nat_types
+  InternalModules: Nat_shims, Nat_lookup, Nat_table
+  BuildDepends: ipaddr, tcpip, cstruct, sexplib, sexplib.syntax, lwt, mirage-profile
+
+Library "mirage-nat-irmin"
+  Path: lib
+  Findlibname: irmin
+  FindlibParent: mirage-nat
   Modules: Nat_rewrite, Nat_translations, Nat_decompose, Nat_types
   InternalModules: Nat_shims, Nat_lookup, Nat_table
   BuildDepends: ipaddr, tcpip, cstruct, sexplib, sexplib.syntax, tc, irmin-network-datastores, irmin, irmin.mem, lwt, mirage-profile
