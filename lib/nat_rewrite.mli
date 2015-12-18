@@ -1,7 +1,6 @@
 open Nat_types
 
-module Make(I : Irmin.S_MAKER)(Clock: CLOCK) (Time: TIME) : sig
-  module I : Irmin.S
+module Make(Clock : Nat_types.CLOCK)(Time : Nat_types.TIME) : sig
   type t
 
   type insert_result =
@@ -9,7 +8,7 @@ module Make(I : Irmin.S_MAKER)(Clock: CLOCK) (Time: TIME) : sig
     | Overlap
     | Unparseable
 
-  val empty : Irmin.config -> t Lwt.t
+  val empty : unit -> t Lwt.t
 
   (** given a lookup table, rewrite direction, and an ip-level frame,
     * perform any translation indicated by presence in the table
@@ -42,9 +41,6 @@ module Make(I : Irmin.S_MAKER)(Clock: CLOCK) (Time: TIME) : sig
     * if insertion succeeded, return the new table;
     * otherwise, return an error type indicating the problem. *)
   val add_redirect : t -> Cstruct.t -> endpoint -> endpoint -> insert_result Lwt.t
-
-  (** handle for accessing the store directly. *)
-  val store_of_t : t -> I.t
 
 end
 

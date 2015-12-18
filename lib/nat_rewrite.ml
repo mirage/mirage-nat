@@ -45,9 +45,8 @@ let set_smac ethernet mac =
   Wire_structs.set_ethernet_src (Macaddr.to_bytes mac) 0 ethernet;
   ethernet
 
-module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
-  module N = Nat_lookup.Make(Backend)(Clock)(Time)
-  module I = N.I
+module Make(Clock: CLOCK)(Time: TIME) = struct
+  module N = Nat_lookup.Make(Clock)(Time)
   type t = N.t
 
   type insert_result =
@@ -58,13 +57,11 @@ module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
   let (>>=) = Lwt.bind
 
   let protofy num = match num with
-    | 6 -> Some Nat_table.Key.Tcp
-    | 17 -> Some Nat_table.Key.Udp
+    | 6 -> Some Nat_types.Tcp
+    | 17 -> Some Nat_types.Udp
     | _ -> None
 
   let empty = N.empty
-
-  let store_of_t = N.store_of_t
 
   let translate table direction frame =
     MProf.Trace.label "Nat_rewrite.translate";
@@ -99,7 +96,7 @@ module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
           (* got everything; do the lookup *)
           N.lookup table proto ((V4 src), sport) ((V4 dst), dport) >>= function
           | None -> Lwt.return Untranslated (* don't autocreate new entries *)
-          | Some ((V4 new_src, new_sport), (V4 new_dst, new_dport)) ->
+          | Some (_expiry, ((V4 new_src, new_sport), (V4 new_dst, new_dport))) ->
             (* TODO: we should probably refuse to pass TTL = 0 and instead send an
                ICMP message back to the sender *)
             rewrite_ip false ip_packet direction (V4 new_src, V4 new_dst);
@@ -110,12 +107,12 @@ module Make(Backend: Irmin.S_MAKER)(Clock: CLOCK)(Time: TIME) = struct
             Lwt.return Translated
 
           (* TODO: 4-to-6 logic *)
-          | Some ((V6 new_src, new_sport), (V6 new_dst, new_dport)) ->
+          | Some (_expiry, ((V6 new_src, new_sport), (V6 new_dst, new_dport))) ->
             Lwt.return Untranslated
-          | Some ((V6 _, _), (V4 _, _)) ->
+          | Some (_expiry, ((V6 _, _), (V4 _, _))) ->
             raise (Invalid_argument "Impossible transformation in NAT
                                          table (src ipv6, dst ipv4)")
-          | Some ((V4 _, _), (V6 _, _)) ->
+          | Some (_expiry, ((V4 _, _), (V6 _, _))) ->
             raise (Invalid_argument "Impossible transformation in NAT
                                          table (src ipv4, dst ipv6)")
 
