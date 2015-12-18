@@ -15,7 +15,7 @@ let (>>=) = Lwt.bind
 
 let ipv4_of_str = Ipaddr.V4.of_string_exn
 
-module Rewriter = Nat_rewrite.Make(Irmin_mem.Make)(Unix_clock)(Unix_time)
+module Rewriter = Nat_rewrite.Make(Unix_clock)(Unix_time)
 
 module Constructors = struct
 
@@ -113,7 +113,7 @@ module Constructors = struct
                          ~sport:internal_xl_port ~dport:internal_client_port
     in
     let table () =
-      Rewriter.empty (Irmin_mem.config ()) >>= fun t ->
+      Rewriter.empty () >>= fun t ->
       Rewriter.add_redirect t frame
           ((V4 internal_xl), internal_xl_port)
           ((V4 internal_client), internal_client_port) >>= function
@@ -126,7 +126,7 @@ module Constructors = struct
       ~proto ~ttl ~src ~dst ~xl ~sport ~dport ~xlport =
     let frame = full_packet ~proto ~ttl ~src ~dst ~sport ~dport in
     let table () =
-      Rewriter.empty (Irmin_mem.config ()) >>= fun t ->
+      Rewriter.empty () >>= fun t ->
       Rewriter.add_nat t frame ((V4 xl), xlport) >>= function
       | Ok -> Lwt.return t
       | Overlap | Unparseable -> assert_failure "Failed to insert test data into table structure"
@@ -266,7 +266,7 @@ let test_add_nat_valid_pkt () =
   let open Default_values in
   let proto = Udp in
   let frame = Constructors.full_packet ~proto ~ttl:52 ~src ~dst ~sport ~dport in
-  Rewriter.empty (Irmin_mem.config ()) >>= fun table ->
+  Rewriter.empty () >>= fun table ->
   Rewriter.add_nat table frame ((V4 xl), xlport) >>= function
   | Overlap -> assert_failure "add_nat claimed overlap when inserting into an
                  empty table"
@@ -311,7 +311,7 @@ let test_add_nat_nonsense () =
   let proto = Udp in
   let frame_size = (Wire_structs.sizeof_ethernet + Wire_structs.Ipv4_wire.sizeof_ipv4) in
   let mangled_looking, _ = Constructors.basic_ipv4_frame ~frame_size proto src dst 60 smac_addr in
-  Rewriter.empty (Irmin_mem.config ()) >>= fun t ->
+  Rewriter.empty () >>= fun t ->
   Rewriter.add_nat t mangled_looking ((Ipaddr.V4 xl), xlport) >>= function
   | Rewriter.Ok -> assert_failure "add_nat happily took a mangled packet"
   | Rewriter.Overlap -> assert_failure
@@ -324,13 +324,13 @@ let test_add_nat_broadcast () =
   let broadcast_dst = ipv4_of_str "255.255.255.255" in
   let broadcast = Constructors.full_packet ~proto:Tcp ~ttl:30 ~src
       ~dst:broadcast_dst ~sport ~dport in
-  Rewriter.empty (Irmin_mem.config ()) >>= fun t ->
+  Rewriter.empty () >>= fun t ->
   Rewriter.add_nat t broadcast ((Ipaddr.V4 xl), xlport) >>= function
   | Ok | Overlap -> assert_failure "add_nat operated on a broadcast packet"
   | Unparseable ->
     (* try just an ethernet frame *)
     let e = zero_cstruct (Cstruct.create Wire_structs.sizeof_ethernet) in
-    Rewriter.empty (Irmin_mem.config ()) >>= fun t ->
+    Rewriter.empty () >>= fun t ->
     Rewriter.add_nat t e ((Ipaddr.V4 xl), xlport) >>= function
     | Ok | Overlap ->
       assert_failure "add_nat claims to have succeeded with a bare ethernet frame"
@@ -370,7 +370,7 @@ let add_many_entries how_many =
   Random.self_init ();
   let fixed_internal_ip = random_ipv4 () in
   let fixed_external_ip = random_ipv4 () in
-  Rewriter.empty (Irmin_mem.config ()) >>= fun t ->
+  Rewriter.empty () >>= fun t ->
   let rec shove_entries = function
     | n when n <= 0 -> Lwt.return_unit
     | n ->
