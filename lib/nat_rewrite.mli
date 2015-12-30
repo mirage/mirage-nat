@@ -62,15 +62,14 @@ val ports_of_transport : transport layer -> (int * int)
 *)
 val layers : Cstruct.t -> (ethernet layer * ip layer * transport layer) option
 
-(* given a function for recalculating transport-layer checksums and an (ip,
-   transport) pair, recalculate and set checksum for valid-looking udp or tcp
-   packets.
+(* given an (ip, transport) pair, recalculate and set checksum for
+   valid-looking udp or tcp packets.
 
    Return a tuple of (ethernet and IP headers only, transport layer)
    for dispatch to I.write .
 *)
 
-val recalculate_transport_checksum : (Cstruct.t -> Cstruct.t list -> int) -> 
+val recalculate_transport_checksum :
   (ethernet layer * ip layer * transport layer) 
   -> (Cstruct.t * Cstruct.t)
 

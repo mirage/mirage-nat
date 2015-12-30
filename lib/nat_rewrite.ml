@@ -297,7 +297,7 @@ let ethip_headers (e, i) =
     Some (Cstruct.sub e 0 (ethersize + ip_len))
   | None | Some _ -> None
 
-let recalculate_transport_checksum csum_fn (ethernet, ip_layer,
+let recalculate_transport_checksum (ethernet, ip_layer,
                                             transport_layer) =
   match ethip_headers (ethernet, ip_layer) with
   | None -> raise (Invalid_argument 
@@ -306,7 +306,8 @@ let recalculate_transport_checksum csum_fn (ethernet, ip_layer,
     let fix_checksum set_checksum ip_layer higherlevel_data =
       (* reset checksum to 0 for recalculation *)
       set_checksum higherlevel_data 0;
-      let actual_checksum = csum_fn just_headers (higherlevel_data :: []) in
+      let ip_header = Cstruct.shift just_headers Wire_structs.sizeof_ethernet in
+      let actual_checksum = Wire_structs.Ipv4_wire.checksum ip_header (higherlevel_data :: []) in
       set_checksum higherlevel_data actual_checksum
     in
     let () = match proto_of_ip ip_layer with
