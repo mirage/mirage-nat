@@ -1,7 +1,3 @@
-(* should the source IP and port be overwritten,
-   or the destination IP and port?  *)
-type direction = Source | Destination
-
 type insert_result =
   | Ok of Nat_lookup.t
   | Overlap
@@ -13,12 +9,12 @@ type ethernet
 type ip
 type 'a layer
 
-(** given a lookup table, rewrite direction, and an ip-level frame,
+(** given a lookup table and an ip-level frame,
   * perform any translation indicated by presence in the table
   * on the Cstruct.t .  If the packet should be forwarded, return Some packet,
   * else return None.  
   * This function is zero-copy and mutates values in the given Cstruct.  *)
-val translate : Nat_lookup.t -> direction -> Cstruct.t -> Cstruct.t option
+val translate : Nat_lookup.t -> Cstruct.t -> Cstruct.t option
 
 (** given a table, a frame, and a translation IP and port,
   * put relevant entries for the (src_ip, src_port), (dst_ip, dst_port) from the
@@ -77,8 +73,8 @@ val recalculate_transport_checksum :
 val set_smac : ethernet layer -> Macaddr.t -> ethernet layer
 
 (* support for direct rewriting of packets *)
-val rewrite_ip : bool -> ip layer -> direction -> (Ipaddr.t * Ipaddr.t) -> unit
+val rewrite_ip : bool -> ip layer -> (Ipaddr.t * Ipaddr.t) -> unit
 
 val ethip_headers : (ethernet layer * ip layer) -> Cstruct.t option
 
-val rewrite_port : transport layer -> direction -> (int * int) -> unit
+val rewrite_port : transport layer -> (int * int) -> unit

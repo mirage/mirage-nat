@@ -71,7 +71,6 @@ module V6 = struct
     cs
 end
 
-type direction = Source | Destination
 type insert_result =
   | Ok of Nat_lookup.t
   | Overlap
@@ -163,22 +162,22 @@ let layers frame =
   | Some ip, Some tx -> Some (frame, ip, tx)
   | _, _ -> None
 
-let rewrite_ip is_ipv6 (ip_layer : Cstruct.t) direction i =
+let rewrite_ip is_ipv6 (ip_layer : Cstruct.t) i =
   (* TODO: this is not the right set of parameters for a function that might
      have to do 6-to-4 translation *)
   (* also, TODO all of the 6-to-4/4-to-6 thoughts and code.  nbd. *)
-  match (is_ipv6, direction, i) with
-  | false, _, (V4 new_src, V4 new_dst) ->
+  match (is_ipv6, i) with
+  | false, (V4 new_src, V4 new_dst) ->
     Wire_structs.Ipv4_wire.set_ipv4_src ip_layer (Ipaddr.V4.to_int32 new_src);
     Wire_structs.Ipv4_wire.set_ipv4_dst ip_layer (Ipaddr.V4.to_int32 new_dst)
   (* TODO: every other case *)
-  | _, _, _ -> raise (Failure "ipv4-ipv4 is the only implemented case")
+  | _, _ -> raise (Failure "ipv4-ipv4 is the only implemented case")
 
-let rewrite_port (txlayer : Cstruct.t) direction (sport, dport) =
+let rewrite_port (txlayer : Cstruct.t) (sport, dport) =
   Wire_structs.set_udp_source_port txlayer sport;
   Wire_structs.set_udp_dest_port txlayer dport
 
-let translate table direction frame =
+let translate table frame =
   (* note that ethif.input doesn't have the same register-listeners-then-input
      format that tcp/udp do, so we could use it for the outer layer of parsing *)
   let decrement_ttl ip_layer =
@@ -212,8 +211,8 @@ let translate table direction frame =
             | Some ((V4 new_src, new_sport), (V4 new_dst, new_dport)) ->
               (* TODO: we should probably refuse to pass TTL = 0 and instead send an
                  ICMP message back to the sender *)
-              rewrite_ip false ip_packet direction (V4 new_src, V4 new_dst);
-              rewrite_port higherproto_packet direction (new_sport, new_dport);
+              rewrite_ip false ip_packet (V4 new_src, V4 new_dst);
+              rewrite_port higherproto_packet (new_sport, new_dport);
               decrement_ttl ip_packet;
               recalculate_ip_checksum ip_packet  
                 ((Cstruct.len ip_packet) - (Cstruct.len higherproto_packet));
