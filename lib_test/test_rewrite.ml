@@ -1,6 +1,6 @@
 open OUnit2
 open Ipaddr
-open Nat_types
+open Mirage_nat
 open Nat_decompose
 open Test_lib
 
@@ -15,7 +15,7 @@ let (>>=) = Lwt.bind
 
 let ipv4_of_str = Ipaddr.V4.of_string_exn
 
-module Rewriter = Nat_rewrite.Make(Unix_clock)(Unix_time)
+module Rewriter = Mirage_nat_hashtable.Make(Unix_clock)(Unix_time)
 
 module Constructors = struct
 
@@ -420,7 +420,6 @@ let add_many_entries how_many =
 let lwt_run f () = Lwt_main.run (f ())
 
 let correct_mappings =
-  let open Nat_types in
   [
     "IPv4 UDP NAT rewrites", `Quick, lwt_run (fun () -> test_nat_ipv4 Udp) ;
     "IPv4 TCP NAT rewrites", `Quick, lwt_run (fun () -> test_nat_ipv4 Tcp) ;
