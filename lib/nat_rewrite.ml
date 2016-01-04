@@ -1,7 +1,6 @@
 open Ipaddr
-open Nat_lookup
 open Nat_shims (* V4 and V6 definitions *)
-open Nat_types
+open Mirage_nat
 
 type 'a layer = 'a Nat_decompose.layer
 type ethernet = Nat_decompose.ethernet
@@ -45,8 +44,8 @@ let set_smac ethernet mac =
   Wire_structs.set_ethernet_src (Macaddr.to_bytes mac) 0 ethernet;
   ethernet
 
-module Make(Clock: CLOCK)(Time: TIME) = struct
-  module N = Nat_lookup.Make(Clock)(Time)
+module Make(Nat_table : Mirage_nat.Lookup) = struct
+  module N = Nat_table
   type t = N.t
 
   type insert_result =
@@ -57,8 +56,8 @@ module Make(Clock: CLOCK)(Time: TIME) = struct
   let (>>=) = Lwt.bind
 
   let protofy num = match num with
-    | 6 -> Some Nat_types.Tcp
-    | 17 -> Some Nat_types.Udp
+    | 6 -> Some Tcp
+    | 17 -> Some Udp
     | _ -> None
 
   let empty = N.empty
