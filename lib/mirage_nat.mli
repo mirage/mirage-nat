@@ -1,10 +1,12 @@
+open Sexplib.Std
+
 type direction =
   | Source
   | Destination
 
 type protocol =
   | Udp
-  | Tcp
+  | Tcp with sexp
 
 type port = Cstruct.uint16
 type endpoint = (Ipaddr.t * port)
