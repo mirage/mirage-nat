@@ -1,5 +1,4 @@
 type 'a layer = Cstruct.t
-open Nat_types
 type ethernet
 type ip
 type transport

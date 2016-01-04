@@ -1,4 +1,4 @@
-open Nat_types
+open Mirage_nat
 
 (* needs better name -- kill map_ here *)
 val map_nat : left:endpoint -> right:endpoint -> translate_left:endpoint ->

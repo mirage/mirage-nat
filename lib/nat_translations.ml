@@ -1,4 +1,4 @@
-open Nat_types
+open Mirage_nat
 
 let map_nat ~left ~right ~translate_left =
   let internal_lookup = (left, right) in
