@@ -54,7 +54,7 @@ end = struct
                         the lookups are part of differing pairs -- this
                         situation is pathological, but possible *)
     | false, false ->
-      let expiration = Int64.add (Clock.now ()) (Int64.of_int expiry_interval) in
+      let expiration = Int64.add (Clock.now ()) expiry_interval in
       Hashtbl.add t.store (proto, mappings.internal_lookup) (expiration, mappings.internal_mapping);
       Hashtbl.add t.store (proto, mappings.external_lookup) (expiration, mappings.external_mapping);
       Lwt.return (Some t)

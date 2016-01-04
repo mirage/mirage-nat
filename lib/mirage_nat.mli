@@ -25,8 +25,10 @@ type translate_result =
   | Translated
   | Untranslated
 
+type time = int64
+
 module type CLOCK = sig
-  val now : unit -> int64
+  val now : unit -> time
 end
 
 module type TIME = sig
@@ -109,7 +111,7 @@ module type Lookup = sig
   val lookup : t -> protocol -> source:endpoint -> destination:endpoint ->
     (int64 * mapping) option Lwt.t
 
-  val insert : t -> int -> protocol -> translation -> t option Lwt.t
+  val insert : t -> time -> protocol -> translation -> t option Lwt.t
 
   val delete : t -> protocol ->
     internal_lookup:mapping ->

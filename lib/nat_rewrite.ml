@@ -151,9 +151,10 @@ end = struct
                 ~translate_right:(other_xl_ip, other_xl_port)
           in
           let expiration_window =
+            (* TODO: this is silly in the case of TCP *)
             match proto with
-            | Udp -> 60 (* UDP gets 60 seconds *)
-            | Tcp -> 60*60*24 (* TCP gets a day *)
+            | Udp -> Int64.of_int 60 (* UDP gets 60 seconds *)
+            | Tcp -> Int64.of_int (60*60*24) (* TCP gets a day *)
           in
           N.insert table expiration_window proto entries >>= function
           | Some t -> Lwt.return Ok
