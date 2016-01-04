@@ -1,5 +1,5 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: 44d029ea4607c9f1499175066a03830e) *)
+(* DO NOT EDIT (digest: 084e4683f6149a01bdc7896b534c3146) *)
 module OASISGettext = struct
 (* # 22 "src/oasis/OASISGettext.ml" *)
 
@@ -611,7 +611,7 @@ let package_default =
        [
           ("mirage-nat", ["lib"], ["Mirage_nat"]);
           ("mirage-nat-hashtable", ["lib/hashtable"], []);
-          ("mirage-nat-irmin", ["lib"], [])
+          ("mirage-nat-irmin", ["lib/irmin"], [])
        ];
      lib_c = [];
      flags =
@@ -657,7 +657,11 @@ let package_default =
             [(OASISExpr.EBool true, S [A "-g"])])
        ];
      includes =
-       [("lib_test", ["lib"; "lib/hashtable"]); ("lib/hashtable", ["lib"])]
+       [
+          ("lib_test", ["lib"; "lib/hashtable"]);
+          ("lib/irmin", ["lib"]);
+          ("lib/hashtable", ["lib"])
+       ]
   }
   ;;
 
@@ -665,6 +669,6 @@ let conf = {MyOCamlbuildFindlib.no_automatic_syntax = false}
 
 let dispatch_default = MyOCamlbuildBase.dispatch_default conf package_default;;
 
-# 669 "myocamlbuild.ml"
+# 673 "myocamlbuild.ml"
 (* OASIS_STOP *)
 Ocamlbuild_plugin.dispatch dispatch_default;;

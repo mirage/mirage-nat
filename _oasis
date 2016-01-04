@@ -28,16 +28,15 @@ Library "mirage-nat"
   Path: lib
   Modules: Mirage_nat
   InternalModules: Nat_rewrite, Nat_decompose, Nat_translations
-  BuildDepends: ipaddr, tcpip, cstruct, lwt, mirage-profile
+  BuildDepends: ipaddr, tcpip, cstruct, lwt, mirage-profile, sexplib.syntax, sexplib
 
 Library "mirage-nat-irmin"
   Build$: flag(irmin)
-  Path: lib
-  Findlibname: irmin
-  FindlibParent: mirage-nat
+  Path: lib/irmin
+  Findlibname: mirage-nat-irmin
   Modules: Mirage_nat_irmin
-  InternalModules: Nat_shims, Nat_table
-  BuildDepends: ipaddr, tcpip, cstruct, sexplib, sexplib.syntax, tc, irmin-network-datastores, irmin, irmin.mem, lwt, mirage-profile
+  InternalModules: Storage
+  BuildDepends: ipaddr, tcpip, cstruct, sexplib, sexplib.syntax, tc, irmin-network-datastores, irmin, irmin.mem, lwt, mirage-profile, mirage-nat
 
 Executable randomized_tests
   Build$: flag(randomized) && flag(tests)

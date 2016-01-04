@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: ef64465af2e26ebeeca7bf6d75be8405)
+# DO NOT EDIT (digest: 169230e8bf4b5eb47e8e70f24d76082f)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -16,6 +16,13 @@ true: annot, bin_annot
 "_darcs": not_hygienic
 # Library mirage-nat
 "lib/mirage-nat.cmxs": use_mirage-nat
+<lib/*.ml{,i,y}>: pkg_cstruct
+<lib/*.ml{,i,y}>: pkg_ipaddr
+<lib/*.ml{,i,y}>: pkg_lwt
+<lib/*.ml{,i,y}>: pkg_mirage-profile
+<lib/*.ml{,i,y}>: pkg_sexplib
+<lib/*.ml{,i,y}>: pkg_sexplib.syntax
+<lib/*.ml{,i,y}>: pkg_tcpip
 # Library mirage-nat-hashtable
 "lib/hashtable/mirage-nat-hashtable.cmxs": use_mirage-nat-hashtable
 <lib/hashtable/*.ml{,i,y}>: pkg_cstruct
@@ -27,18 +34,19 @@ true: annot, bin_annot
 <lib/hashtable/*.ml{,i,y}>: pkg_tcpip
 <lib/hashtable/*.ml{,i,y}>: use_mirage-nat
 # Library mirage-nat-irmin
-"lib/mirage-nat-irmin.cmxs": use_mirage-nat-irmin
-<lib/*.ml{,i,y}>: pkg_cstruct
-<lib/*.ml{,i,y}>: pkg_ipaddr
-<lib/*.ml{,i,y}>: pkg_irmin
-<lib/*.ml{,i,y}>: pkg_irmin-network-datastores
-<lib/*.ml{,i,y}>: pkg_irmin.mem
-<lib/*.ml{,i,y}>: pkg_lwt
-<lib/*.ml{,i,y}>: pkg_mirage-profile
-<lib/*.ml{,i,y}>: pkg_sexplib
-<lib/*.ml{,i,y}>: pkg_sexplib.syntax
-<lib/*.ml{,i,y}>: pkg_tc
-<lib/*.ml{,i,y}>: pkg_tcpip
+"lib/irmin/mirage-nat-irmin.cmxs": use_mirage-nat-irmin
+<lib/irmin/*.ml{,i,y}>: pkg_cstruct
+<lib/irmin/*.ml{,i,y}>: pkg_ipaddr
+<lib/irmin/*.ml{,i,y}>: pkg_irmin
+<lib/irmin/*.ml{,i,y}>: pkg_irmin-network-datastores
+<lib/irmin/*.ml{,i,y}>: pkg_irmin.mem
+<lib/irmin/*.ml{,i,y}>: pkg_lwt
+<lib/irmin/*.ml{,i,y}>: pkg_mirage-profile
+<lib/irmin/*.ml{,i,y}>: pkg_sexplib
+<lib/irmin/*.ml{,i,y}>: pkg_sexplib.syntax
+<lib/irmin/*.ml{,i,y}>: pkg_tc
+<lib/irmin/*.ml{,i,y}>: pkg_tcpip
+<lib/irmin/*.ml{,i,y}>: use_mirage-nat
 # Executable randomized_tests
 "lib_test/test_randomized.byte": oasis_executable_randomized_tests_byte
 <lib_test/*.ml{,i,y}>: oasis_executable_randomized_tests_byte
@@ -50,6 +58,8 @@ true: annot, bin_annot
 "lib_test/test_randomized.byte": pkg_mirage-profile
 "lib_test/test_randomized.byte": pkg_oUnit
 "lib_test/test_randomized.byte": pkg_quickcheck
+"lib_test/test_randomized.byte": pkg_sexplib
+"lib_test/test_randomized.byte": pkg_sexplib.syntax
 "lib_test/test_randomized.byte": pkg_tcpip
 "lib_test/test_randomized.byte": use_mirage-nat
 <lib_test/*.ml{,i,y}>: pkg_arbitrary-network
@@ -63,6 +73,8 @@ true: annot, bin_annot
 <lib_test/test_decompose.{native,byte}>: pkg_lwt
 <lib_test/test_decompose.{native,byte}>: pkg_mirage-profile
 <lib_test/test_decompose.{native,byte}>: pkg_oUnit
+<lib_test/test_decompose.{native,byte}>: pkg_sexplib
+<lib_test/test_decompose.{native,byte}>: pkg_sexplib.syntax
 <lib_test/test_decompose.{native,byte}>: pkg_tcpip
 <lib_test/test_decompose.{native,byte}>: use_mirage-nat
 <lib_test/test_decompose.{native,byte}>: custom
