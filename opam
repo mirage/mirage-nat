@@ -14,7 +14,11 @@ build: [
 ]
 build-test: [make "test"]
 install: [make "install"]
-remove: ["ocamlfind" "remove" "mirage-nat"]
+remove: [
+  ["ocamlfind" "remove" "mirage-nat"]
+  ["ocamlfind" "remove" "mirage-nat-hashtable"]
+  ["ocamlfind" "remove" "mirage-nat-irmin"]
+]
 depends: [
   "ocamlfind" {build}
   "ipaddr"
