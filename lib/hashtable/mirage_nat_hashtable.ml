@@ -6,41 +6,18 @@
 
    Doing this will cause us to need a real parser.
 *)
-open Nat_types
-
-type mode =
-  | Redirect
-  | Nat
+open Mirage_nat
 
 let (>>=) = Lwt.bind
 
-module type S = sig
-  type t
-
-  val lookup : t -> protocol ->
-    source:endpoint ->
-    destination:endpoint ->
-    (int64 * mapping) option Lwt.t
-
-  val insert : t -> int -> protocol -> translation -> t option Lwt.t
-
-  val delete : t -> protocol ->
-    internal_lookup:mapping ->
-    external_lookup:mapping -> t Lwt.t
-
-  val empty : unit -> t Lwt.t
-end
-
-module Make(Clock : CLOCK)(Time: TIME) = struct
+module Storage(Clock : CLOCK)(Time: TIME) : Lookup = struct
 
   type t = {
     store: ((protocol * mapping), (int64 * mapping)) Hashtbl.t
   }
 
   let rec tick t () =
-    MProf.Trace.label "Nat_lookup.tick";
-    (* only do expiration for UDP, since we intend to do something state-based
-       for TCP *)
+    MProf.Trace.label "Mirage_nat.tick";
     let expiry_check_interval = 6. in
     let now = Clock.now () in
     Hashtbl.iter (fun key (expiry, _) ->
@@ -53,7 +30,7 @@ module Make(Clock : CLOCK)(Time: TIME) = struct
   let empty () = Lwt.return { store = Hashtbl.create 21 } (* initial size is completely arbitrary *)
 
   let lookup t proto ~source ~destination =
-    MProf.Trace.label "Nat_lookup.lookup.read";
+    MProf.Trace.label "Mirage_nat_hashtable.lookup.read";
     match Hashtbl.mem t.store (proto, (source, destination)) with
     | false -> Lwt.return None
     | true ->
@@ -62,7 +39,7 @@ module Make(Clock : CLOCK)(Time: TIME) = struct
   (* cases that should result in a valid mapping:
      neither side is already mapped *)
   let insert t expiry_interval proto mappings =
-    MProf.Trace.label "Nat_lookup.insert";
+    MProf.Trace.label "Mirage_nat_hashtable.insert";
     let check store proto pair =
       Hashtbl.mem store (proto, pair)
     in
@@ -84,4 +61,9 @@ module Make(Clock : CLOCK)(Time: TIME) = struct
     Hashtbl.remove t.store (proto, external_lookup);
     Lwt.return t
 
+end
+
+module Make(Clock: CLOCK) (Time: TIME) = struct
+  module Table = Storage(Clock)(Time)
+  include Nat_rewrite.Make(Table)
 end
