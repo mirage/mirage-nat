@@ -29,5 +29,5 @@ depopts: [
   "irmin-network-datastores"
 ]
 conflicts: [
-  "irmin-network-datastores" { < "0.1" }
+  "irmin-network-datastores" { <= "0.0.2" }
 ]
