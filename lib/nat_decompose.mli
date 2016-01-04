@@ -14,7 +14,7 @@ val proto_of_ip : ip layer -> Cstruct.uint8
    destination ports *)
 val ports_of_transport : transport layer -> (int * int)
 
-val ip_and_above_of_frame : Cstruct.t -> Cstruct.t option
+val ip_and_above_of_frame : Cstruct.t -> Cstruct.t option (* stop exposing this *)
 
 val transport_and_above_of_ip : Cstruct.t -> Cstruct.t option
 
