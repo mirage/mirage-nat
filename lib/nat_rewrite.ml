@@ -44,9 +44,12 @@ let set_smac ethernet mac =
   Wire_structs.set_ethernet_src (Macaddr.to_bytes mac) 0 ethernet;
   ethernet
 
-module Make(Nat_table : Mirage_nat.Lookup) = struct
+module Make(Nat_table : Mirage_nat.Lookup) : sig
+  include Mirage_nat.S with type config = Nat_table.config 
+end = struct
   module N = Nat_table
   type t = N.t
+  type config = Nat_table.config
 
   type insert_result =
     | Ok
@@ -60,7 +63,7 @@ module Make(Nat_table : Mirage_nat.Lookup) = struct
     | 17 -> Some Udp
     | _ -> None
 
-  let empty = N.empty
+  let empty (config : N.config) = N.empty config
 
   let translate table direction frame =
     MProf.Trace.label "Nat_rewrite.translate";

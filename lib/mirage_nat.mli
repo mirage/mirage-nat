@@ -34,13 +34,14 @@ module type TIME = sig
 end
 module type S = sig
   type t
+  type config
 
   type insert_result =
     | Ok
     | Overlap
     | Unparseable
 
-  val empty : unit -> t Lwt.t
+  val empty : config -> t Lwt.t
 
   (** given a lookup table, rewrite direction, and an ip-level frame,
     * perform any translation indicated by presence in the table
@@ -103,6 +104,7 @@ val rewrite_port : transport layer -> direction -> (int * int) -> unit
 
 module type Lookup = sig
   type t 
+  type config
 
   val lookup : t -> protocol -> source:endpoint -> destination:endpoint ->
     (int64 * mapping) option Lwt.t
@@ -113,5 +115,5 @@ module type Lookup = sig
     internal_lookup:mapping ->
     external_lookup:mapping -> t Lwt.t
 
-  val empty : unit -> t Lwt.t
+  val empty : config -> t Lwt.t
 end

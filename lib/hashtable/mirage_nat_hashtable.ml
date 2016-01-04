@@ -10,11 +10,15 @@ open Mirage_nat
 
 let (>>=) = Lwt.bind
 
-module Storage(Clock : CLOCK)(Time: TIME) : Lookup = struct
+module Storage(Clock : CLOCK)(Time: TIME) : sig
+  include Mirage_nat.Lookup with type config = unit
+end = struct
 
   type t = {
     store: ((protocol * mapping), (int64 * mapping)) Hashtbl.t
   }
+
+  type config = unit
 
   let rec tick t () =
     MProf.Trace.label "Mirage_nat.tick";
