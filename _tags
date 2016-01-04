@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 2b4af036c5bf146a6e5787ed3941a58c)
+# DO NOT EDIT (digest: ef64465af2e26ebeeca7bf6d75be8405)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -16,6 +16,18 @@ true: annot, bin_annot
 "_darcs": not_hygienic
 # Library mirage-nat
 "lib/mirage-nat.cmxs": use_mirage-nat
+# Library mirage-nat-hashtable
+"lib/hashtable/mirage-nat-hashtable.cmxs": use_mirage-nat-hashtable
+<lib/hashtable/*.ml{,i,y}>: pkg_cstruct
+<lib/hashtable/*.ml{,i,y}>: pkg_ipaddr
+<lib/hashtable/*.ml{,i,y}>: pkg_lwt
+<lib/hashtable/*.ml{,i,y}>: pkg_mirage-profile
+<lib/hashtable/*.ml{,i,y}>: pkg_sexplib
+<lib/hashtable/*.ml{,i,y}>: pkg_sexplib.syntax
+<lib/hashtable/*.ml{,i,y}>: pkg_tcpip
+<lib/hashtable/*.ml{,i,y}>: use_mirage-nat
+# Library mirage-nat-irmin
+"lib/mirage-nat-irmin.cmxs": use_mirage-nat-irmin
 <lib/*.ml{,i,y}>: pkg_cstruct
 <lib/*.ml{,i,y}>: pkg_ipaddr
 <lib/*.ml{,i,y}>: pkg_irmin
@@ -34,16 +46,10 @@ true: annot, bin_annot
 "lib_test/test_randomized.byte": pkg_arbitrary-network
 "lib_test/test_randomized.byte": pkg_cstruct
 "lib_test/test_randomized.byte": pkg_ipaddr
-"lib_test/test_randomized.byte": pkg_irmin
-"lib_test/test_randomized.byte": pkg_irmin-network-datastores
-"lib_test/test_randomized.byte": pkg_irmin.mem
 "lib_test/test_randomized.byte": pkg_lwt
 "lib_test/test_randomized.byte": pkg_mirage-profile
 "lib_test/test_randomized.byte": pkg_oUnit
 "lib_test/test_randomized.byte": pkg_quickcheck
-"lib_test/test_randomized.byte": pkg_sexplib
-"lib_test/test_randomized.byte": pkg_sexplib.syntax
-"lib_test/test_randomized.byte": pkg_tc
 "lib_test/test_randomized.byte": pkg_tcpip
 "lib_test/test_randomized.byte": use_mirage-nat
 <lib_test/*.ml{,i,y}>: pkg_arbitrary-network
@@ -54,15 +60,9 @@ true: annot, bin_annot
 <lib_test/test_decompose.{native,byte}>: pkg_alcotest
 <lib_test/test_decompose.{native,byte}>: pkg_cstruct
 <lib_test/test_decompose.{native,byte}>: pkg_ipaddr
-<lib_test/test_decompose.{native,byte}>: pkg_irmin
-<lib_test/test_decompose.{native,byte}>: pkg_irmin-network-datastores
-<lib_test/test_decompose.{native,byte}>: pkg_irmin.mem
 <lib_test/test_decompose.{native,byte}>: pkg_lwt
 <lib_test/test_decompose.{native,byte}>: pkg_mirage-profile
 <lib_test/test_decompose.{native,byte}>: pkg_oUnit
-<lib_test/test_decompose.{native,byte}>: pkg_sexplib
-<lib_test/test_decompose.{native,byte}>: pkg_sexplib.syntax
-<lib_test/test_decompose.{native,byte}>: pkg_tc
 <lib_test/test_decompose.{native,byte}>: pkg_tcpip
 <lib_test/test_decompose.{native,byte}>: use_mirage-nat
 <lib_test/test_decompose.{native,byte}>: custom
@@ -72,32 +72,26 @@ true: annot, bin_annot
 "lib_test/test_rewrite.byte": pkg_alcotest
 "lib_test/test_rewrite.byte": pkg_cstruct
 "lib_test/test_rewrite.byte": pkg_ipaddr
-"lib_test/test_rewrite.byte": pkg_irmin
-"lib_test/test_rewrite.byte": pkg_irmin-network-datastores
-"lib_test/test_rewrite.byte": pkg_irmin.mem
 "lib_test/test_rewrite.byte": pkg_lwt
 "lib_test/test_rewrite.byte": pkg_lwt.unix
 "lib_test/test_rewrite.byte": pkg_mirage-profile
 "lib_test/test_rewrite.byte": pkg_oUnit
 "lib_test/test_rewrite.byte": pkg_sexplib
 "lib_test/test_rewrite.byte": pkg_sexplib.syntax
-"lib_test/test_rewrite.byte": pkg_tc
 "lib_test/test_rewrite.byte": pkg_tcpip
 "lib_test/test_rewrite.byte": use_mirage-nat
+"lib_test/test_rewrite.byte": use_mirage-nat-hashtable
 <lib_test/*.ml{,i,y}>: pkg_alcotest
 <lib_test/*.ml{,i,y}>: pkg_cstruct
 <lib_test/*.ml{,i,y}>: pkg_ipaddr
-<lib_test/*.ml{,i,y}>: pkg_irmin
-<lib_test/*.ml{,i,y}>: pkg_irmin-network-datastores
-<lib_test/*.ml{,i,y}>: pkg_irmin.mem
 <lib_test/*.ml{,i,y}>: pkg_lwt
 <lib_test/*.ml{,i,y}>: pkg_lwt.unix
 <lib_test/*.ml{,i,y}>: pkg_mirage-profile
 <lib_test/*.ml{,i,y}>: pkg_oUnit
 <lib_test/*.ml{,i,y}>: pkg_sexplib
 <lib_test/*.ml{,i,y}>: pkg_sexplib.syntax
-<lib_test/*.ml{,i,y}>: pkg_tc
 <lib_test/*.ml{,i,y}>: pkg_tcpip
 <lib_test/*.ml{,i,y}>: use_mirage-nat
+<lib_test/*.ml{,i,y}>: use_mirage-nat-hashtable
 "lib_test/test_rewrite.byte": custom
 # OASIS_STOP

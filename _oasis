@@ -18,19 +18,25 @@ Flag irmin
   Description: build Irmin-backed NAT table
   Default: false
 
+Library "mirage-nat-hashtable"
+  Path: lib/hashtable
+  Findlibname: mirage-nat-hashtable
+  Modules: Mirage_nat_hashtable
+  BuildDepends: ipaddr, tcpip, cstruct, sexplib, sexplib.syntax, lwt, mirage-profile, mirage-nat
+
 Library "mirage-nat"
   Path: lib
-  Findlibname: mirage-nat
-  Modules: Nat_rewrite, Nat_translations, Nat_decompose, Nat_types
-  InternalModules: Nat_shims, Nat_lookup, Nat_table
-  BuildDepends: ipaddr, tcpip, cstruct, sexplib, sexplib.syntax, lwt, mirage-profile
+  Modules: Mirage_nat
+  InternalModules: Nat_rewrite, Nat_decompose, Nat_translations
+  BuildDepends: ipaddr, tcpip, cstruct, lwt, mirage-profile
 
 Library "mirage-nat-irmin"
+  Build$: flag(irmin)
   Path: lib
   Findlibname: irmin
   FindlibParent: mirage-nat
-  Modules: Nat_rewrite, Nat_translations, Nat_decompose, Nat_types
-  InternalModules: Nat_shims, Nat_lookup, Nat_table
+  Modules: Mirage_nat_irmin
+  InternalModules: Nat_shims, Nat_table
   BuildDepends: ipaddr, tcpip, cstruct, sexplib, sexplib.syntax, tc, irmin-network-datastores, irmin, irmin.mem, lwt, mirage-profile
 
 Executable randomized_tests
@@ -61,7 +67,7 @@ Executable test_rewrite
   Custom: true
   MainIs: test_rewrite.ml
   ByteOpt: -g
-  BuildDepends: oUnit, tcpip, alcotest, mirage-nat, lwt.unix
+  BuildDepends: oUnit, tcpip, alcotest, mirage-nat, lwt.unix, mirage-nat-hashtable
 
 Test test_decompose
   Run$: flag(tests)
