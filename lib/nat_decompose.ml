@@ -5,6 +5,7 @@ type ip
 type transport
 type payload
 
+open Ipaddr
 open Nat_shims
 
 (* TODO: it's not clear where this function should be, but it probably shouldn't
@@ -112,3 +113,53 @@ let layers frame =
       match payload_of_transport proto tx with
       | None -> None
       | Some payload -> Some (frame, ip, tx, payload)
+
+let rewrite_ip is_ipv6 (ip_layer : Cstruct.t) i =
+  (* TODO: this is not the right set of parameters for a function that might
+       have to do 6-to-4 translation *)
+  (* also, TODO all of the 6-to-4/4-to-6 thoughts and code.  nbd. *)
+  match (is_ipv6, i) with
+  | false, (V4 new_src, V4 new_dst) ->
+    Wire_structs.Ipv4_wire.set_ipv4_src ip_layer (Ipaddr.V4.to_int32 new_src);
+    Wire_structs.Ipv4_wire.set_ipv4_dst ip_layer (Ipaddr.V4.to_int32 new_dst)
+  | _, _ -> raise (Failure "ipv4-ipv4 is the only implemented case")
+
+let rewrite_port (txlayer : Cstruct.t) (sport, dport) =
+  Wire_structs.set_udp_source_port txlayer sport;
+  Wire_structs.set_udp_dest_port txlayer dport
+
+let recalculate_ip_checksum ip_layer tx_layer =
+  let size = ((Cstruct.len ip_layer) - (Cstruct.len tx_layer)) in
+  Wire_structs.Ipv4_wire.set_ipv4_csum ip_layer 0;
+    let just_ipv4 = Cstruct.sub ip_layer 0 size in
+    let new_csum = Tcpip_checksum.ones_complement just_ipv4 in
+    Wire_structs.Ipv4_wire.set_ipv4_csum ip_layer new_csum
+
+let finalize_packet csum_fn (ethernet, ip_layer, transport_layer, payload) =
+  match ethip_headers (ethernet, ip_layer) with
+  | None -> raise (Invalid_argument
+                     "Could not recalculate transport-layer checksum after NAT rewrite")
+  | Some just_headers ->
+    let fix_checksum set_checksum ip_layer higherlevel_data =
+      (* reset checksum to 0 for recalculation *)
+      set_checksum higherlevel_data 0;
+      let actual_checksum = csum_fn just_headers (higherlevel_data :: []) in
+      set_checksum higherlevel_data actual_checksum
+    in
+    let () = match proto_of_ip ip_layer with
+      | 17 -> fix_checksum Wire_structs.set_udp_checksum ip_layer transport_layer
+      | 6 ->
+        fix_checksum Wire_structs.Tcp_wire.set_tcp_checksum ip_layer transport_layer
+      | _ -> ()
+    in
+    (just_headers, transport_layer)
+
+let set_smac ethernet mac =
+  Wire_structs.set_ethernet_src (Macaddr.to_bytes mac) 0 ethernet;
+  ethernet
+
+let decrement_ttl ip_layer =
+  Wire_structs.Ipv4_wire.set_ipv4_ttl ip_layer
+    ((Wire_structs.Ipv4_wire.get_ipv4_ttl ip_layer) - 1)
+
+let compare a b = Cstruct.compare a b

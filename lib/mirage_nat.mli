@@ -86,26 +86,6 @@ type ethernet = Nat_decompose.ethernet
 type ip = Nat_decompose.ip
 type 'a layer = 'a Nat_decompose.layer
 
-(* given a function for recalculating transport-layer checksums and an (ip,
-   transport) pair, recalculate and set checksum for valid-looking udp or tcp
-   packets.
-
-   Return a tuple of (ethernet and IP headers only, transport layer)
-   for dispatch to I.write .
-*)
-
-val recalculate_transport_checksum : (Cstruct.t -> Cstruct.t list -> int) ->
-  (ethernet layer * ip layer * transport layer)
-  -> (Cstruct.t * Cstruct.t)
-
-(* set the ethernet source address to the provided MAC address *)
-val set_smac : ethernet layer -> Macaddr.t -> ethernet layer
-
-(* support for direct rewriting of packets *)
-val rewrite_ip : bool -> ip layer -> direction -> (Ipaddr.t * Ipaddr.t) -> unit
-
-val rewrite_port : transport layer -> direction -> (int * int) -> unit
-
 module type Lookup = sig
   type t 
   type config
