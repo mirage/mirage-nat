@@ -22,25 +22,26 @@ module Constructors = struct
   let expiry = 0
 
   let basic_ipv4_frame ?(frame_size=1024) (proto : protocol) src dst ttl smac_addr =
+    (* ethernet layer *)
     let ethernet_frame = zero_cstruct (Cstruct.create frame_size) in
     let ethernet_frame = Cstruct.set_len ethernet_frame
         (Wire_structs.sizeof_ethernet + Wire_structs.Ipv4_wire.sizeof_ipv4) in
     Wire_structs.set_ethernet_src (Macaddr.to_bytes smac_addr) 0 ethernet_frame;
     Wire_structs.set_ethernet_ethertype ethernet_frame 0x0800;
-    match ip_and_above_of_frame ethernet_frame with
-    | None -> OUnit.assert_failure "failure constructing test frame"
-    | Some buf ->
-      (* Write the constant IPv4 header fields *)
-      Wire_structs.Ipv4_wire.set_ipv4_hlen_version buf ((4 lsl 4) + (5));
-      Wire_structs.Ipv4_wire.set_ipv4_tos buf 0;
-      Wire_structs.Ipv4_wire.set_ipv4_off buf 0;
-      Wire_structs.Ipv4_wire.set_ipv4_ttl buf ttl;
-      Wire_structs.Ipv4_wire.set_ipv4_proto buf (int_of_protocol proto);
-      Wire_structs.Ipv4_wire.set_ipv4_src buf (Ipaddr.V4.to_int32 src); (* altered *)
-      Wire_structs.Ipv4_wire.set_ipv4_dst buf (Ipaddr.V4.to_int32 dst);
-      Wire_structs.Ipv4_wire.set_ipv4_id buf 0x4142;
-      let len = Wire_structs.sizeof_ethernet + Wire_structs.Ipv4_wire.sizeof_ipv4 in
-      (ethernet_frame, len)
+
+    (* ipv4 layer *)
+    let buf = Cstruct.shift ethernet_frame Wire_structs.sizeof_ethernet in
+    (* Write the constant IPv4 header fields *)
+    Wire_structs.Ipv4_wire.set_ipv4_hlen_version buf ((4 lsl 4) + (5));
+    Wire_structs.Ipv4_wire.set_ipv4_tos buf 0;
+    Wire_structs.Ipv4_wire.set_ipv4_off buf 0;
+    Wire_structs.Ipv4_wire.set_ipv4_ttl buf ttl;
+    Wire_structs.Ipv4_wire.set_ipv4_proto buf (int_of_protocol proto);
+    Wire_structs.Ipv4_wire.set_ipv4_src buf (Ipaddr.V4.to_int32 src); (* altered *)
+    Wire_structs.Ipv4_wire.set_ipv4_dst buf (Ipaddr.V4.to_int32 dst);
+    Wire_structs.Ipv4_wire.set_ipv4_id buf 0x4142;
+    let len = Wire_structs.sizeof_ethernet + Wire_structs.Ipv4_wire.sizeof_ipv4 in
+    (ethernet_frame, len)
 
   let basic_ipv6_frame proto src dst ttl smac_addr =
     let ethernet_frame = zero_cstruct (Cstruct.create
@@ -49,16 +50,14 @@ module Constructors = struct
     let smac = Macaddr.to_bytes smac_addr in
     Wire_structs.set_ethernet_src smac 0 ethernet_frame;
     Wire_structs.set_ethernet_ethertype ethernet_frame 0x86dd;
-    match ip_and_above_of_frame ethernet_frame with
-    | None -> OUnit.assert_failure "failure constructing test frame"
-    | Some ip_layer ->
-      Wire_structs.Ipv6_wire.set_ipv6_version_flow ip_layer 0x60000000l;
-      Wire_structs.Ipv6_wire.set_ipv6_src (Ipaddr.V6.to_bytes src) 0 ip_layer;
-      Wire_structs.Ipv6_wire.set_ipv6_dst (Ipaddr.V6.to_bytes dst) 0 ip_layer;
-      Wire_structs.Ipv6_wire.set_ipv6_nhdr ip_layer proto;
-      Wire_structs.Ipv6_wire.set_ipv6_hlim ip_layer ttl;
-      let len = Wire_structs.sizeof_ethernet + Wire_structs.Ipv6_wire.sizeof_ipv6 in
-      (ethernet_frame, len)
+    let ip_layer = Cstruct.shift ethernet_frame Wire_structs.sizeof_ethernet in
+    Wire_structs.Ipv6_wire.set_ipv6_version_flow ip_layer 0x60000000l;
+    Wire_structs.Ipv6_wire.set_ipv6_src (Ipaddr.V6.to_bytes src) 0 ip_layer;
+    Wire_structs.Ipv6_wire.set_ipv6_dst (Ipaddr.V6.to_bytes dst) 0 ip_layer;
+    Wire_structs.Ipv6_wire.set_ipv6_nhdr ip_layer proto;
+    Wire_structs.Ipv6_wire.set_ipv6_hlim ip_layer ttl;
+    let len = Wire_structs.sizeof_ethernet + Wire_structs.Ipv6_wire.sizeof_ipv6 in
+    (ethernet_frame, len)
 
   let add_tcp (frame, len) source_port dest_port =
     let open Wire_structs.Tcp_wire in
@@ -158,17 +157,15 @@ let check_entry expected (actual : ((Ipaddr.t * int) * (Ipaddr.t * int)) option)
    which has those fields set. *)
 let assert_ipv4_has exp_src exp_dst exp_proto exp_ttl xl_frame =
   let printer a = Ipaddr.V4.to_string (Ipaddr.V4.of_int32 a) in
-  match ip_and_above_of_frame xl_frame with
-  | None -> OUnit.assert_failure "tried to rewrite a messed-up frame"
-  | Some ipv4 ->
-    let open Wire_structs.Ipv4_wire in
-    (* should still be an ipv4 packet *)
-    assert_equal ~printer:string_of_int 0x0800 (Wire_structs.get_ethernet_ethertype xl_frame);
+  let ipv4 = Cstruct.shift xl_frame Wire_structs.sizeof_ethernet in
+  let open Wire_structs.Ipv4_wire in
+  (* should still be an ipv4 packet *)
+  assert_equal ~printer:string_of_int 0x0800 (Wire_structs.get_ethernet_ethertype xl_frame);
 
-    assert_equal ~printer (Ipaddr.V4.to_int32 (exp_src)) (get_ipv4_src ipv4);
-    assert_equal ~printer (Ipaddr.V4.to_int32 (exp_dst)) (get_ipv4_dst ipv4);
-    assert_equal ~printer:string_of_int (int_of_protocol exp_proto) (get_ipv4_proto ipv4);
-    assert_equal ~printer:string_of_int exp_ttl (get_ipv4_ttl ipv4)
+  assert_equal ~printer (Ipaddr.V4.to_int32 (exp_src)) (get_ipv4_src ipv4);
+  assert_equal ~printer (Ipaddr.V4.to_int32 (exp_dst)) (get_ipv4_dst ipv4);
+  assert_equal ~printer:string_of_int (int_of_protocol exp_proto) (get_ipv4_proto ipv4);
+  assert_equal ~printer:string_of_int exp_ttl (get_ipv4_ttl ipv4)
 
 let assert_transport_has exp_sport exp_dport xl_frame =
   match Nat_decompose.layers xl_frame with
@@ -185,7 +182,9 @@ let assert_payloads_match expected actual =
     Cstruct.hexdump expected;
     Printf.printf "Complete packet (actual):\n";
     Cstruct.hexdump actual;
-    OUnit.assert_equal ~msg:"Payload match failure" ~printer:Cstruct.to_string ~cmp:Cstruct.equal exp_payload actual_payload
+    OUnit.assert_equal ~msg:"Payload match failure" ~cmp:(fun a b -> 0 =
+                                                                     Nat_decompose.compare
+                                                         a b) exp_payload actual_payload
   | _, _ -> OUnit.assert_failure
               "At least one packet in a payload equality assertion couldn't be decomposed"
 
