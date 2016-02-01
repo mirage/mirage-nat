@@ -59,7 +59,7 @@ Executable test_decompose
   CompiledObject: best
   MainIs: test_decompose.ml
   ByteOpt: -g
-  BuildDepends: oUnit, alcotest, mirage-nat, tcpip
+  BuildDepends: oUnit, alcotest, mirage-nat
 
 Executable test_rewrite
   Build$: flag(tests)
@@ -68,7 +68,7 @@ Executable test_rewrite
   Custom: true
   MainIs: test_rewrite.ml
   ByteOpt: -g
-  BuildDepends: oUnit, tcpip, alcotest, mirage-nat, lwt.unix, mirage-nat.hashtable
+  BuildDepends: oUnit, alcotest, mirage-nat, mirage-nat.hashtable, lwt.unix
 
 Test test_decompose
   Run$: flag(tests)

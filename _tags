@@ -1,9 +1,8 @@
 # OASIS_START
-# DO NOT EDIT (digest: 169230e8bf4b5eb47e8e70f24d76082f)
+# DO NOT EDIT (digest: 868237c7398e6fc789a2643657bc8fca)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
-true: annot, bin_annot
 <**/.svn>: -traverse
 <**/.svn>: not_hygienic
 ".bzr": -traverse
@@ -16,40 +15,40 @@ true: annot, bin_annot
 "_darcs": not_hygienic
 # Library mirage-nat
 "lib/mirage-nat.cmxs": use_mirage-nat
-<lib/*.ml{,i,y}>: pkg_cstruct
-<lib/*.ml{,i,y}>: pkg_ipaddr
-<lib/*.ml{,i,y}>: pkg_lwt
-<lib/*.ml{,i,y}>: pkg_mirage-profile
-<lib/*.ml{,i,y}>: pkg_sexplib
-<lib/*.ml{,i,y}>: pkg_sexplib.syntax
-<lib/*.ml{,i,y}>: pkg_tcpip
+<lib/*.ml{,i}>: pkg_cstruct
+<lib/*.ml{,i}>: pkg_ipaddr
+<lib/*.ml{,i}>: pkg_lwt
+<lib/*.ml{,i}>: pkg_mirage-profile
+<lib/*.ml{,i}>: pkg_sexplib
+<lib/*.ml{,i}>: pkg_sexplib.syntax
+<lib/*.ml{,i}>: pkg_tcpip
 # Library mirage-nat-hashtable
 "lib/hashtable/mirage-nat-hashtable.cmxs": use_mirage-nat-hashtable
-<lib/hashtable/*.ml{,i,y}>: pkg_cstruct
-<lib/hashtable/*.ml{,i,y}>: pkg_ipaddr
-<lib/hashtable/*.ml{,i,y}>: pkg_lwt
-<lib/hashtable/*.ml{,i,y}>: pkg_mirage-profile
-<lib/hashtable/*.ml{,i,y}>: pkg_sexplib
-<lib/hashtable/*.ml{,i,y}>: pkg_sexplib.syntax
-<lib/hashtable/*.ml{,i,y}>: pkg_tcpip
-<lib/hashtable/*.ml{,i,y}>: use_mirage-nat
+<lib/hashtable/*.ml{,i}>: pkg_cstruct
+<lib/hashtable/*.ml{,i}>: pkg_ipaddr
+<lib/hashtable/*.ml{,i}>: pkg_lwt
+<lib/hashtable/*.ml{,i}>: pkg_mirage-profile
+<lib/hashtable/*.ml{,i}>: pkg_sexplib
+<lib/hashtable/*.ml{,i}>: pkg_sexplib.syntax
+<lib/hashtable/*.ml{,i}>: pkg_tcpip
+<lib/hashtable/*.ml{,i}>: use_mirage-nat
 # Library mirage-nat-irmin
 "lib/irmin/mirage-nat-irmin.cmxs": use_mirage-nat-irmin
-<lib/irmin/*.ml{,i,y}>: pkg_cstruct
-<lib/irmin/*.ml{,i,y}>: pkg_ipaddr
-<lib/irmin/*.ml{,i,y}>: pkg_irmin
-<lib/irmin/*.ml{,i,y}>: pkg_irmin-network-datastores
-<lib/irmin/*.ml{,i,y}>: pkg_irmin.mem
-<lib/irmin/*.ml{,i,y}>: pkg_lwt
-<lib/irmin/*.ml{,i,y}>: pkg_mirage-profile
-<lib/irmin/*.ml{,i,y}>: pkg_sexplib
-<lib/irmin/*.ml{,i,y}>: pkg_sexplib.syntax
-<lib/irmin/*.ml{,i,y}>: pkg_tc
-<lib/irmin/*.ml{,i,y}>: pkg_tcpip
-<lib/irmin/*.ml{,i,y}>: use_mirage-nat
+<lib/irmin/*.ml{,i}>: pkg_cstruct
+<lib/irmin/*.ml{,i}>: pkg_ipaddr
+<lib/irmin/*.ml{,i}>: pkg_irmin
+<lib/irmin/*.ml{,i}>: pkg_irmin-network-datastores
+<lib/irmin/*.ml{,i}>: pkg_irmin.mem
+<lib/irmin/*.ml{,i}>: pkg_lwt
+<lib/irmin/*.ml{,i}>: pkg_mirage-profile
+<lib/irmin/*.ml{,i}>: pkg_sexplib
+<lib/irmin/*.ml{,i}>: pkg_sexplib.syntax
+<lib/irmin/*.ml{,i}>: pkg_tc
+<lib/irmin/*.ml{,i}>: pkg_tcpip
+<lib/irmin/*.ml{,i}>: use_mirage-nat
 # Executable randomized_tests
 "lib_test/test_randomized.byte": oasis_executable_randomized_tests_byte
-<lib_test/*.ml{,i,y}>: oasis_executable_randomized_tests_byte
+<lib_test/*.ml{,i}>: oasis_executable_randomized_tests_byte
 "lib_test/test_randomized.byte": pkg_alcotest
 "lib_test/test_randomized.byte": pkg_arbitrary-network
 "lib_test/test_randomized.byte": pkg_cstruct
@@ -62,11 +61,11 @@ true: annot, bin_annot
 "lib_test/test_randomized.byte": pkg_sexplib.syntax
 "lib_test/test_randomized.byte": pkg_tcpip
 "lib_test/test_randomized.byte": use_mirage-nat
-<lib_test/*.ml{,i,y}>: pkg_arbitrary-network
-<lib_test/*.ml{,i,y}>: pkg_quickcheck
+<lib_test/*.ml{,i}>: pkg_arbitrary-network
+<lib_test/*.ml{,i}>: pkg_quickcheck
 # Executable test_decompose
 <lib_test/test_decompose.{native,byte}>: oasis_executable_test_decompose_byte
-<lib_test/*.ml{,i,y}>: oasis_executable_test_decompose_byte
+<lib_test/*.ml{,i}>: oasis_executable_test_decompose_byte
 <lib_test/test_decompose.{native,byte}>: pkg_alcotest
 <lib_test/test_decompose.{native,byte}>: pkg_cstruct
 <lib_test/test_decompose.{native,byte}>: pkg_ipaddr
@@ -80,7 +79,7 @@ true: annot, bin_annot
 <lib_test/test_decompose.{native,byte}>: custom
 # Executable test_rewrite
 "lib_test/test_rewrite.byte": oasis_executable_test_rewrite_byte
-<lib_test/*.ml{,i,y}>: oasis_executable_test_rewrite_byte
+<lib_test/*.ml{,i}>: oasis_executable_test_rewrite_byte
 "lib_test/test_rewrite.byte": pkg_alcotest
 "lib_test/test_rewrite.byte": pkg_cstruct
 "lib_test/test_rewrite.byte": pkg_ipaddr
@@ -93,17 +92,17 @@ true: annot, bin_annot
 "lib_test/test_rewrite.byte": pkg_tcpip
 "lib_test/test_rewrite.byte": use_mirage-nat
 "lib_test/test_rewrite.byte": use_mirage-nat-hashtable
-<lib_test/*.ml{,i,y}>: pkg_alcotest
-<lib_test/*.ml{,i,y}>: pkg_cstruct
-<lib_test/*.ml{,i,y}>: pkg_ipaddr
-<lib_test/*.ml{,i,y}>: pkg_lwt
-<lib_test/*.ml{,i,y}>: pkg_lwt.unix
-<lib_test/*.ml{,i,y}>: pkg_mirage-profile
-<lib_test/*.ml{,i,y}>: pkg_oUnit
-<lib_test/*.ml{,i,y}>: pkg_sexplib
-<lib_test/*.ml{,i,y}>: pkg_sexplib.syntax
-<lib_test/*.ml{,i,y}>: pkg_tcpip
-<lib_test/*.ml{,i,y}>: use_mirage-nat
-<lib_test/*.ml{,i,y}>: use_mirage-nat-hashtable
+<lib_test/*.ml{,i}>: pkg_alcotest
+<lib_test/*.ml{,i}>: pkg_cstruct
+<lib_test/*.ml{,i}>: pkg_ipaddr
+<lib_test/*.ml{,i}>: pkg_lwt
+<lib_test/*.ml{,i}>: pkg_lwt.unix
+<lib_test/*.ml{,i}>: pkg_mirage-profile
+<lib_test/*.ml{,i}>: pkg_oUnit
+<lib_test/*.ml{,i}>: pkg_sexplib
+<lib_test/*.ml{,i}>: pkg_sexplib.syntax
+<lib_test/*.ml{,i}>: pkg_tcpip
+<lib_test/*.ml{,i}>: use_mirage-nat
+<lib_test/*.ml{,i}>: use_mirage-nat-hashtable
 "lib_test/test_rewrite.byte": custom
 # OASIS_STOP

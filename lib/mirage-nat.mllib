@@ -1,5 +1,6 @@
 # OASIS_START
-# DO NOT EDIT (digest: c24a14260c6f4662d68a44338ad02f52)
+# DO NOT EDIT (digest: 6c50e92406a5055a7c47fa3402dabe87)
+Mirage_nat
 Nat_decompose
 Nat_shims
 Nat_rewrite
