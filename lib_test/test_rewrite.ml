@@ -1,8 +1,9 @@
-open OUnit2
 open Ipaddr
 open Mirage_nat
 open Nat_decompose
 open Test_lib
+
+let assert_equal = OUnit.assert_equal
 
 let zero_cstruct cs =
   Cstruct.memset cs 0; cs
@@ -117,7 +118,7 @@ module Constructors = struct
           ((V4 internal_xl), internal_xl_port)
           ((V4 internal_client), internal_client_port) >>= function
       | Ok -> Lwt.return t
-      | Overlap | Unparseable -> assert_failure "Failed to insert test data into table structure"
+      | Overlap | Unparseable -> Alcotest.fail "Failed to insert test data into table structure"
     in
     table () >>= fun table -> Lwt.return (frame, table)
 
@@ -128,7 +129,7 @@ module Constructors = struct
       Rewriter.empty () >>= fun t ->
       Rewriter.add_nat t frame ((V4 xl), xlport) >>= function
       | Ok -> Lwt.return t
-      | Overlap | Unparseable -> assert_failure "Failed to insert test data into table structure"
+      | Overlap | Unparseable -> Alcotest.fail "Failed to insert test data into table structure"
     in
     table () >>= fun table -> Lwt.return (frame, table)
 
@@ -150,7 +151,7 @@ let check_entry expected (actual : ((Ipaddr.t * int) * (Ipaddr.t * int)) option)
   in
   match actual with
   | Some a -> assert_equal ~printer expected a
-  | None -> assert_failure "an expected entry was missing entirely"
+  | None -> Alcotest.fail "an expected entry was missing entirely"
 
 (* given a source IP, destination IP, protocol, and TTL,
    check to see whether the provided Ethernet frame contains an IPv4 packet
@@ -169,7 +170,7 @@ let assert_ipv4_has exp_src exp_dst exp_proto exp_ttl xl_frame =
 
 let assert_transport_has exp_sport exp_dport xl_frame =
   match Nat_decompose.layers xl_frame with
-  | None -> OUnit.assert_failure "Decomposition of a frame failed"
+  | None -> Alcotest.fail "Decomposition of a frame failed"
   | Some (frame, ip, tx, payload) ->
     let (src, dst) = Nat_decompose.ports_of_transport tx in
     OUnit.assert_equal exp_sport src;
@@ -185,12 +186,12 @@ let assert_payloads_match expected actual =
     OUnit.assert_equal ~msg:"Payload match failure" ~cmp:(fun a b -> 0 =
                                                                      Nat_decompose.compare
                                                          a b) exp_payload actual_payload
-  | _, _ -> OUnit.assert_failure
+  | _, _ -> Alcotest.fail
               "At least one packet in a payload equality assertion couldn't be decomposed"
 
 let assert_translates table direction frame =
   Rewriter.translate table direction frame >>= function
-  | Untranslated -> assert_failure "Expected translateable frame wasn't rewritten"
+  | Untranslated -> Alcotest.fail "Expected translateable frame wasn't rewritten"
   | Translated -> Lwt.return_unit
 
 let test_nat_ipv4 proto =
@@ -244,22 +245,22 @@ let test_add_redirect_valid_pkt () =
   Rewriter.add_redirect table orig_frame
     ((Ipaddr.V4 nat_internal_ip), nat_internal_port)
     ((Ipaddr.V4 internal_client), internal_client_port) >>= function
-    | Overlap -> assert_failure "overlap claimed for update of entry"
+    | Overlap -> Alcotest.fail "overlap claimed for update of entry"
     | Unparseable ->
       Printf.printf "Allegedly unparseable frame follows:\n";
       Cstruct.hexdump frame;
-      assert_failure "add_redirect claimed that a reference packet was unparseable"
+      Alcotest.fail "add_redirect claimed that a reference packet was unparseable"
     | Ok ->
       (* attempting to add another entry which partially overlaps should fail *)
       Rewriter.add_redirect table orig_frame
         ((Ipaddr.of_string_exn "8.8.8.8"), nat_internal_port)
         ((Ipaddr.V4 internal_client), internal_client_port) >>= function
       | Overlap -> Lwt.return_unit
-      | Ok -> assert_failure "overlapping entry addition allowed"
+      | Ok -> Alcotest.fail "overlapping entry addition allowed"
       | Unparseable ->
         Printf.printf "Allegedly unparseable frame follows:\n";
         Cstruct.hexdump frame;
-        assert_failure "add_redirect claimed that a reference packet was unparseable"
+        Alcotest.fail "add_redirect claimed that a reference packet was unparseable"
 
 let test_add_nat_valid_pkt () =
   let open Default_values in
@@ -267,12 +268,12 @@ let test_add_nat_valid_pkt () =
   let frame = Constructors.full_packet ~proto ~ttl:52 ~src ~dst ~sport ~dport in
   Rewriter.empty () >>= fun table ->
   Rewriter.add_nat table frame ((V4 xl), xlport) >>= function
-  | Overlap -> assert_failure "add_nat claimed overlap when inserting into an
+  | Overlap -> Alcotest.fail "add_nat claimed overlap when inserting into an
                  empty table"
   | Unparseable ->
     Printf.printf "Allegedly unparseable frame follows:\n";
     Cstruct.hexdump frame;
-    assert_failure "add_nat claimed that a reference packet was unparseable"
+    Alcotest.fail "add_nat claimed that a reference packet was unparseable"
   | Ok ->
     (* make sure table actually has the entries we expect *)
     assert_translates table Source frame >>= fun () ->
@@ -286,20 +287,20 @@ let test_add_nat_valid_pkt () =
     assert_payloads_match orig_reverse_frame reverse_frame;
     (* trying the same operation again should update the expiration time *)
     Rewriter.add_nat table orig_frame ((V4 xl), xlport) >>= function
-    | Overlap -> assert_failure "add_nat disallowed an update"
+    | Overlap -> Alcotest.fail "add_nat disallowed an update"
     | Unparseable ->
       Printf.printf "Allegedly unparseable frame follows:\n";
       Cstruct.hexdump frame;
-      assert_failure "add_nat claimed that a reference packet was unparseable"
+      Alcotest.fail "add_nat claimed that a reference packet was unparseable"
     | Ok ->
       (* a half-match should fail with Overlap *)
       let frame = Constructors.full_packet ~proto ~ttl:52 ~src:xl ~dst ~sport ~dport in
       Rewriter.add_nat table frame ((Ipaddr.V4 xl), xlport) >>= function
-      | Ok -> assert_failure "overlap wasn't detected"
+      | Ok -> Alcotest.fail "overlap wasn't detected"
       | Unparseable ->
         Printf.printf "Allegedly unparseable frame follows:\n";
         Cstruct.hexdump frame;
-        assert_failure "add_nat claimed that a reference packet was unparseable"
+        Alcotest.fail "add_nat claimed that a reference packet was unparseable"
       | Overlap -> Lwt.return_unit
 
 
@@ -312,8 +313,8 @@ let test_add_nat_nonsense () =
   let mangled_looking, _ = Constructors.basic_ipv4_frame ~frame_size proto src dst 60 smac_addr in
   Rewriter.empty () >>= fun t ->
   Rewriter.add_nat t mangled_looking ((Ipaddr.V4 xl), xlport) >>= function
-  | Rewriter.Ok -> assert_failure "add_nat happily took a mangled packet"
-  | Rewriter.Overlap -> assert_failure
+  | Rewriter.Ok -> Alcotest.fail "add_nat happily took a mangled packet"
+  | Rewriter.Overlap -> Alcotest.fail
                  "add_nat claimed a mangled packet was already in the table"
   | Rewriter.Unparseable -> Lwt.return_unit
 
@@ -325,14 +326,14 @@ let test_add_nat_broadcast () =
       ~dst:broadcast_dst ~sport ~dport in
   Rewriter.empty () >>= fun t ->
   Rewriter.add_nat t broadcast ((Ipaddr.V4 xl), xlport) >>= function
-  | Ok | Overlap -> assert_failure "add_nat operated on a broadcast packet"
+  | Ok | Overlap -> Alcotest.fail "add_nat operated on a broadcast packet"
   | Unparseable ->
     (* try just an ethernet frame *)
     let e = zero_cstruct (Cstruct.create Wire_structs.sizeof_ethernet) in
     Rewriter.empty () >>= fun t ->
     Rewriter.add_nat t e ((Ipaddr.V4 xl), xlport) >>= function
     | Ok | Overlap ->
-      assert_failure "add_nat claims to have succeeded with a bare ethernet frame"
+      Alcotest.fail "add_nat claims to have succeeded with a bare ethernet frame"
     | Unparseable -> Lwt.return_unit
 
 type packet_variables = {
@@ -408,7 +409,7 @@ let add_many_entries how_many =
             Printf.printf "destination: %s, %x\n" (print_ip values.dst) values.dport;
             Printf.printf "ttl: %x\n" values.ttl;
             Cstruct.hexdump packet;
-            OUnit.assert_failure "Parse failure"
+            Alcotest.fail "Parse failure"
           | Overlap ->
             Printf.printf "overlap between entries; trying again\n%!";
             shove_entries n
