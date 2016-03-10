@@ -135,7 +135,7 @@ let recalculate_ip_checksum ip_layer tx_layer =
     let new_csum = Tcpip_checksum.ones_complement just_ipv4 in
     Wire_structs.Ipv4_wire.set_ipv4_csum ip_layer new_csum
 
-let finalize_packet csum_fn (ethernet, ip_layer, transport_layer, payload) =
+let finalize_packet (ethernet, ip_layer, transport_layer, payload) =
   match ethip_headers (ethernet, ip_layer) with
   | None -> raise (Invalid_argument
                      "Could not recalculate transport-layer checksum after NAT rewrite")
@@ -143,7 +143,7 @@ let finalize_packet csum_fn (ethernet, ip_layer, transport_layer, payload) =
     let fix_checksum set_checksum ip_layer higherlevel_data =
       (* reset checksum to 0 for recalculation *)
       set_checksum higherlevel_data 0;
-      let actual_checksum = csum_fn just_headers (higherlevel_data :: []) in
+      let actual_checksum = Wire_structs.Ipv4_wire.checksum ip_layer (higherlevel_data :: []) in
       set_checksum higherlevel_data actual_checksum
     in
     let () = match proto_of_ip ip_layer with

@@ -35,7 +35,7 @@ val ethip_headers : (ethernet layer * ip layer) -> Cstruct.t option
    for dispatch to I.write .
 *)
 
-val finalize_packet : (Cstruct.t -> Cstruct.t list -> int) ->
+val finalize_packet : 
   (ethernet layer * ip layer * transport layer * payload layer) -> (Cstruct.t * Cstruct.t)
 
 (* set the ethernet source address to the provided MAC address *)
