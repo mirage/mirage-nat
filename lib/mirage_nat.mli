@@ -1,9 +1,5 @@
 open Sexplib.Std
 
-type direction =
-  | Source
-  | Destination
-
 type protocol =
   | Udp
   | Tcp with sexp
@@ -47,12 +43,12 @@ module type S = sig
 
   val empty : config -> t Lwt.t
 
-  (** given a lookup table, rewrite direction, and an ip-level frame,
+  (** given a lookup table and an ip-level frame,
     * perform any translation indicated by presence in the table
     * on the Cstruct.t .  If the packet should be forwarded, return Some packet,
     * else return None.
     * This function is zero-copy and mutates values in the given Cstruct.  *)
-  val translate : t -> direction -> Cstruct.t -> translate_result Lwt.t
+  val translate : t -> Cstruct.t -> translate_result Lwt.t
 
   (** given a table, a frame, and a translation IP and port,
     * put relevant entries for the (src_ip, src_port), (dst_ip, dst_port) from the

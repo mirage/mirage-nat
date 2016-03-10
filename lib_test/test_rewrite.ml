@@ -5,6 +5,8 @@ open Test_lib
 
 let assert_equal = OUnit.assert_equal
 
+type direction = | Source | Destination
+
 let zero_cstruct cs =
   Cstruct.memset cs 0; cs
 
@@ -190,7 +192,7 @@ let assert_payloads_match expected actual =
               "At least one packet in a payload equality assertion couldn't be decomposed"
 
 let assert_translates table direction frame =
-  Rewriter.translate table direction frame >>= function
+  Rewriter.translate table frame >>= function
   | Untranslated -> Alcotest.fail "Expected translateable frame wasn't rewritten"
   | Translated -> Lwt.return_unit
 
@@ -376,12 +378,12 @@ let add_many_entries how_many =
     | n ->
       Printf.printf "%d more entries...\n%!" n;
       let (packet, values) = random_packet () in
-      Rewriter.translate t Source packet >>= function
+      Rewriter.translate t packet >>= function
       | Translated ->
         Printf.printf "already a Source entry for the packet; trying again\n%!";
         shove_entries n (* generated an overlap; try again *)
       | Untranslated ->
-        Rewriter.translate t Destination packet >>= function 
+        Rewriter.translate t packet >>= function 
         | Translated ->
           Printf.printf "already a Destination entry for the packet; trying again\n%!";
           shove_entries n 

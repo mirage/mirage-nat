@@ -28,7 +28,7 @@ end = struct
 
   let empty (config : N.config) = N.empty config
 
-  let translate table direction frame =
+  let translate table frame =
     MProf.Trace.label "Nat_rewrite.translate";
     (* note that ethif.input doesn't have the same register-listeners-then-input
        format that tcp/udp do, so we could use it for the outer layer of parsing *)
