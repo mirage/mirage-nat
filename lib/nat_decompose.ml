@@ -94,11 +94,10 @@ let ports_of_transport tx_layer =
   ((Wire_structs.get_udp_source_port tx_layer : int),
    (Wire_structs.get_udp_dest_port tx_layer : int))
 
-let ethip_headers (e, i) =
-  let ethersize = Wire_structs.sizeof_ethernet in
+let ethip_headers i =
   match ip_header_length (Wire_structs.Ipv4_wire.get_ipv4_hlen_version i) with
-  | Some ip_len when Cstruct.len e >= (ethersize + ip_len) ->
-    Some (Cstruct.sub e 0 (ethersize + ip_len))
+  | Some ip_len when Cstruct.len i >= ip_len ->
+    Some (Cstruct.sub i 0 ip_len)
   | None | Some _ -> None
 
 let layers frame =
@@ -135,8 +134,8 @@ let recalculate_ip_checksum ip_layer tx_layer =
     let new_csum = Tcpip_checksum.ones_complement just_ipv4 in
     Wire_structs.Ipv4_wire.set_ipv4_csum ip_layer new_csum
 
-let finalize_packet (ethernet, ip_layer, transport_layer, payload) =
-  match ethip_headers (ethernet, ip_layer) with
+let finalize_packet (ip_layer, transport_layer, payload) =
+  match ethip_headers (ip_layer) with
   | None -> raise (Invalid_argument
                      "Could not recalculate transport-layer checksum after NAT rewrite")
   | Some just_headers ->

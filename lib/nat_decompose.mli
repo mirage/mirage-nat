@@ -26,7 +26,7 @@ val layers : Cstruct.t ->
    do some sanity checking and potentially give back a packet ready for
    transmission *)
 (* (this is a composition function, not a decomposition function) *)
-val ethip_headers : (ethernet layer * ip layer) -> Cstruct.t option
+val ethip_headers : ip layer -> Cstruct.t option
 
 (* given a function for recalculating transport-layer checksums and a set of
    layers, recalculate and set checksum for valid-looking udp or tcp packets.
@@ -36,7 +36,7 @@ val ethip_headers : (ethernet layer * ip layer) -> Cstruct.t option
 *)
 
 val finalize_packet : 
-  (ethernet layer * ip layer * transport layer * payload layer) -> (Cstruct.t * Cstruct.t)
+  (ip layer * transport layer * payload layer) -> (Cstruct.t * Cstruct.t)
 
 (* set the ethernet source address to the provided MAC address *)
 val set_smac : ethernet layer -> Macaddr.t -> ethernet layer
