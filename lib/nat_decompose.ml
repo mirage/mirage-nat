@@ -28,20 +28,6 @@ let retrieve_ports tx_layer =
       ((Wire_structs.get_udp_source_port tx_layer : int),
        (Wire_structs.get_udp_dest_port tx_layer : int))
 
-let ip_and_above_of_frame frame =
-  let minimal_size = function
-    | 0x0800 -> Wire_structs.Ipv4_wire.sizeof_ipv4 + Wire_structs.sizeof_ethernet
-    | 0x86dd -> Wire_structs.Ipv6_wire.sizeof_ipv6 +
-                Wire_structs.sizeof_ethernet
-    | _ -> raise (Invalid_argument "minimal_size called with unknown ethertype")
-  in
-  let ethertype = (Wire_structs.get_ethernet_ethertype frame) in
-  match ethertype with
-  | 0x0800 | 0x86dd ->
-    if (Cstruct.len frame) < (minimal_size ethertype) then None
-    else Some (Cstruct.shift frame Wire_structs.sizeof_ethernet)
-  | _ -> None
-
 let proto_of_ip ip_layer =
   let hlen_version = Wire_structs.Ipv4_wire.get_ipv4_hlen_version ip_layer in
   match ((hlen_version land 0xf0) lsr 4) with
@@ -100,18 +86,15 @@ let ethip_headers i =
     Some (Cstruct.sub i 0 ip_len)
   | None | Some _ -> None
 
-let layers frame =
+let layers ip =
   MProf.Trace.label "Nat_decompose.layers";
-  match ip_and_above_of_frame frame with
+  match transport_and_above_of_ip ip with
   | None -> None
-  | Some ip ->
-    match transport_and_above_of_ip ip with
+  | Some tx ->
+    let proto = proto_of_ip ip in
+    match payload_of_transport proto tx with
     | None -> None
-    | Some tx ->
-      let proto = proto_of_ip ip in
-      match payload_of_transport proto tx with
-      | None -> None
-      | Some payload -> Some (ip, tx, payload)
+    | Some payload -> Some (ip, tx, payload)
 
 let rewrite_ip is_ipv6 (ip_layer : Cstruct.t) i =
   (* TODO: this is not the right set of parameters for a function that might
