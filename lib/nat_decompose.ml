@@ -112,7 +112,7 @@ let layers frame =
       let proto = proto_of_ip ip in
       match payload_of_transport proto tx with
       | None -> None
-      | Some payload -> Some (frame, ip, tx, payload)
+      | Some payload -> Some (ip, tx, payload)
 
 let rewrite_ip is_ipv6 (ip_layer : Cstruct.t) i =
   (* TODO: this is not the right set of parameters for a function that might

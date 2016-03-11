@@ -38,7 +38,7 @@ end = struct
        the proper checksum before sending the packet. *)
     match Nat_decompose.layers frame with
     | None -> Lwt.return Untranslated (* un-NATtable packet; drop it like it's hot *)
-    | Some (frame, ip_packet, higherproto_packet, _payload) ->
+    | Some (ip_packet, higherproto_packet, _payload) ->
       match (Nat_decompose.addresses_of_ip ip_packet) with
       | (V4 src, V6 dst) -> Lwt.return Untranslated (* impossible! *)
       | (V6 src, V4 dst) -> Lwt.return Untranslated (* impossible! *)
@@ -77,7 +77,7 @@ end = struct
     (* decompose this frame; if we can't, bail out now *)
     match Nat_decompose.layers frame with
     | None -> Lwt.return Unparseable
-    | Some (frame, ip_layer, tx_layer, _payload) ->
+    | Some (ip_layer, tx_layer, _payload) ->
       let proto = protofy (Nat_decompose.proto_of_ip ip_layer) in
       let check_scope ip =
         match Ipaddr.scope ip with

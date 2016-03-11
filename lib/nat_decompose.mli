@@ -20,7 +20,7 @@ val ports_of_transport : transport layer -> (int * int)
    ethernet cstruct's length is not set to the length of the ethernet header).
 *)
 val layers : Cstruct.t ->
-  (ethernet layer * ip layer * transport layer * payload layer) option
+  (ip layer * transport layer * payload layer) option
 
 (* given an ethernet layer with some space for payload and a desired ip payload,
    do some sanity checking and potentially give back a packet ready for
