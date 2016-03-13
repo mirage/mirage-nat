@@ -134,11 +134,7 @@ let finalize_packet (ip_layer, transport_layer, payload) =
         fix_checksum Wire_structs.Tcp_wire.set_tcp_checksum ip_layer transport_layer
       | _ -> ()
     in
-    (just_headers, transport_layer)
-
-let set_smac ethernet mac =
-  Wire_structs.set_ethernet_src (Macaddr.to_bytes mac) 0 ethernet;
-  ethernet
+    [just_headers ; transport_layer]
 
 let decrement_ttl ip_layer =
   Wire_structs.Ipv4_wire.set_ipv4_ttl ip_layer

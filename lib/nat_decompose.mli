@@ -36,10 +36,7 @@ val ethip_headers : ip layer -> Cstruct.t option
 *)
 
 val finalize_packet : 
-  (ip layer * transport layer * payload layer) -> (Cstruct.t * Cstruct.t)
-
-(* set the ethernet source address to the provided MAC address *)
-val set_smac : ethernet layer -> Macaddr.t -> ethernet layer
+  (ip layer * transport layer * payload layer) -> Cstruct.t list
 
 (* support for direct rewriting of packets *)
 val rewrite_ip : bool -> ip layer -> (Ipaddr.t * Ipaddr.t) -> unit
