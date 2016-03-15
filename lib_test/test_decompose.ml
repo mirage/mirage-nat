@@ -11,15 +11,9 @@
     0x0020:  7002 16d0 83b4 0000 0204 05b4 0303 0200  p...............
 *)
 let tcp_syn () =
-  let syn = Cstruct.create 62 in 
-  (* ethernet layer *)
-  let ethernet_dst = Macaddr.of_string_exn "00:16:3e:2c:5a:99" in
-  let ethernet_src = Macaddr.of_string_exn "00:16:3e:01:00:e7" in
-  Wire_structs.set_ethernet_dst (Macaddr.to_bytes ethernet_dst) 0 syn;
-  Wire_structs.set_ethernet_src (Macaddr.to_bytes ethernet_src) 0 syn;
-  Wire_structs.set_ethernet_ethertype syn 0x0800;
+  let syn = Cstruct.create 48 in
   (* ip layer *)
-  let ipv4 = Cstruct.shift syn Wire_structs.sizeof_ethernet in
+  let ipv4 = syn in
   Wire_structs.Ipv4_wire.set_ipv4_proto ipv4 6;
   Wire_structs.Ipv4_wire.set_ipv4_src ipv4 (Ipaddr.V4.to_int32
                                               (Ipaddr.V4.of_string_exn
@@ -57,20 +51,13 @@ let tcp_syn () =
   | None ->
     Cstruct.hexdump syn;
     OUnit.assert_failure "Nat_decompose failed to parse a TCP SYN packet"
-  | Some (ethernet, ip, transport, payload) -> ()
+  | Some (ip, transport, payload) -> ()
 
 let udp_payload () =
-  let pl = Cstruct.create Wire_structs.(sizeof_ethernet
-                                         + Ipv4_wire.sizeof_ipv4
-                                         + sizeof_udp + 4) in
-  (* ethernet layer *)
-  let ethernet_dst = Macaddr.of_string_exn "00:16:3e:2c:5a:99" in
-  let ethernet_src = Macaddr.of_string_exn "00:16:3e:01:00:e7" in
-  Wire_structs.set_ethernet_dst (Macaddr.to_bytes ethernet_dst) 0 pl;
-  Wire_structs.set_ethernet_src (Macaddr.to_bytes ethernet_src) 0 pl;
-  Wire_structs.set_ethernet_ethertype pl 0x0800;
+  let pl = Cstruct.create Wire_structs.(Ipv4_wire.sizeof_ipv4
+                                        + sizeof_udp + 4) in
   (* ip layer *)
-  let ipv4 = Cstruct.shift pl Wire_structs.sizeof_ethernet in
+  let ipv4 = pl in
   Wire_structs.Ipv4_wire.set_ipv4_proto ipv4 17;
   Wire_structs.Ipv4_wire.set_ipv4_src ipv4 (Ipaddr.V4.to_int32
                                               (Ipaddr.V4.of_string_exn
@@ -98,7 +85,7 @@ let udp_payload () =
   | None ->
     Cstruct.hexdump pl;
     OUnit.assert_failure "Nat_decompose failed to parse this UDP packet"
-  | Some (ac_ethernet, ac_ip, ac_transport, ac_payload) -> ()
+  | Some (ac_ip, ac_transport, ac_payload) -> ()
 
 let tests = [
   "tcp_syn", `Quick, tcp_syn;
