@@ -22,14 +22,14 @@ Library "mirage-nat"
   Path: lib
   Modules: Mirage_nat, Nat_decompose, Nat_shims
   InternalModules: Nat_rewrite, Nat_translations
-  BuildDepends: ipaddr, tcpip, cstruct, lwt, mirage-profile, sexplib.syntax, sexplib
+  BuildDepends: ipaddr, tcpip, tcpip, cstruct, lwt, mirage-profile
 
 Library "mirage-nat-hashtable"
   Path: lib/hashtable
   Findlibname: hashtable
   FindlibParent: mirage-nat
   Modules: Mirage_nat_hashtable
-  BuildDepends: ipaddr, tcpip, cstruct, sexplib, sexplib.syntax, lwt, mirage-profile, mirage-nat
+  BuildDepends: ipaddr, tcpip, cstruct, lwt, mirage-profile, mirage-nat
 
 Library "mirage-nat-irmin"
   Build$: flag(irmin)
@@ -68,7 +68,7 @@ Executable test_rewrite
   Custom: true
   MainIs: test_rewrite.ml
   ByteOpt: -g
-  BuildDepends: oUnit, alcotest, mirage-nat, mirage-nat.hashtable, lwt.unix
+  BuildDepends: oUnit, alcotest, mirage-nat, mirage-nat.hashtable, lwt.unix, io-page.unix
 
 Test test_decompose
   Run$: flag(tests)
