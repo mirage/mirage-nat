@@ -24,7 +24,8 @@ depends: [
   "ipaddr"
   "mirage-profile"
   "lwt"
-  "tcpip" { >= "2.6.1" }
+  "rresult"
+  "tcpip" { >= "2.9.0" }
   "ounit" {test}
   "alcotest" {test}
   "arbitrary-test" {test}

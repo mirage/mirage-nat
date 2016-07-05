@@ -74,12 +74,6 @@ module type S = sig
   val add_redirect : t -> Cstruct.t -> endpoint -> endpoint -> insert_result Lwt.t
 end
 
-(* phantom types for Cstructs, so type system can help us keep them straight *)
-type transport = Nat_decompose.transport
-type ethernet = Nat_decompose.ethernet
-type ip = Nat_decompose.ip
-type 'a layer = 'a Nat_decompose.layer
-
 module type Lookup = sig
   type t 
   type config

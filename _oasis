@@ -21,8 +21,8 @@ Flag irmin
 Library "mirage-nat"
   Path: lib
   Modules: Mirage_nat, Nat_shims
-  InternalModules: Nat_rewrite, Nat_translations
-  BuildDepends: ipaddr, tcpip, tcpip, cstruct, lwt, mirage-profile
+  InternalModules: Nat_rewrite, Nat_translations, Nat_decompose
+  BuildDepends: ipaddr, tcpip, tcpip, cstruct, lwt, mirage-profile, rresult
 
 Library "mirage-nat-hashtable"
   Path: lib/hashtable
