@@ -22,7 +22,7 @@ Library "mirage-nat"
   Path: lib
   Modules: Mirage_nat, Nat_shims
   InternalModules: Nat_rewrite, Nat_translations, Nat_decompose
-  BuildDepends: ipaddr, tcpip, tcpip, cstruct, lwt, mirage-profile, rresult
+  BuildDepends: ipaddr, tcpip, tcpip.ethif, tcpip.arpv4, tcpip.ipv4, tcpip.ipv6, tcpip.icmpv4, tcpip.udp, tcpip.tcp, cstruct, lwt, mirage-profile, rresult
 
 Library "mirage-nat-hashtable"
   Path: lib/hashtable

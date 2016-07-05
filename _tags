@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: a22172307073080b1d65faae9512b396)
+# DO NOT EDIT (digest: 72cd7df36c7bfcebb48628eda654e5ad)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -22,6 +22,13 @@ true: annot, bin_annot
 <lib/*.ml{,i,y}>: pkg_mirage-profile
 <lib/*.ml{,i,y}>: pkg_rresult
 <lib/*.ml{,i,y}>: pkg_tcpip
+<lib/*.ml{,i,y}>: pkg_tcpip.arpv4
+<lib/*.ml{,i,y}>: pkg_tcpip.ethif
+<lib/*.ml{,i,y}>: pkg_tcpip.icmpv4
+<lib/*.ml{,i,y}>: pkg_tcpip.ipv4
+<lib/*.ml{,i,y}>: pkg_tcpip.ipv6
+<lib/*.ml{,i,y}>: pkg_tcpip.tcp
+<lib/*.ml{,i,y}>: pkg_tcpip.udp
 # Library mirage-nat-hashtable
 "lib/hashtable/mirage-nat-hashtable.cmxs": use_mirage-nat-hashtable
 <lib/hashtable/*.ml{,i,y}>: pkg_cstruct
@@ -30,6 +37,13 @@ true: annot, bin_annot
 <lib/hashtable/*.ml{,i,y}>: pkg_mirage-profile
 <lib/hashtable/*.ml{,i,y}>: pkg_rresult
 <lib/hashtable/*.ml{,i,y}>: pkg_tcpip
+<lib/hashtable/*.ml{,i,y}>: pkg_tcpip.arpv4
+<lib/hashtable/*.ml{,i,y}>: pkg_tcpip.ethif
+<lib/hashtable/*.ml{,i,y}>: pkg_tcpip.icmpv4
+<lib/hashtable/*.ml{,i,y}>: pkg_tcpip.ipv4
+<lib/hashtable/*.ml{,i,y}>: pkg_tcpip.ipv6
+<lib/hashtable/*.ml{,i,y}>: pkg_tcpip.tcp
+<lib/hashtable/*.ml{,i,y}>: pkg_tcpip.udp
 <lib/hashtable/*.ml{,i,y}>: use_mirage-nat
 # Executable randomized_tests
 "lib_test/test_randomized.byte": oasis_executable_randomized_tests_byte
@@ -44,6 +58,13 @@ true: annot, bin_annot
 "lib_test/test_randomized.byte": pkg_quickcheck
 "lib_test/test_randomized.byte": pkg_rresult
 "lib_test/test_randomized.byte": pkg_tcpip
+"lib_test/test_randomized.byte": pkg_tcpip.arpv4
+"lib_test/test_randomized.byte": pkg_tcpip.ethif
+"lib_test/test_randomized.byte": pkg_tcpip.icmpv4
+"lib_test/test_randomized.byte": pkg_tcpip.ipv4
+"lib_test/test_randomized.byte": pkg_tcpip.ipv6
+"lib_test/test_randomized.byte": pkg_tcpip.tcp
+"lib_test/test_randomized.byte": pkg_tcpip.udp
 "lib_test/test_randomized.byte": use_mirage-nat
 <lib_test/*.ml{,i,y}>: pkg_arbitrary-network
 <lib_test/*.ml{,i,y}>: pkg_quickcheck
@@ -60,6 +81,13 @@ true: annot, bin_annot
 "lib_test/test_rewrite.byte": pkg_oUnit
 "lib_test/test_rewrite.byte": pkg_rresult
 "lib_test/test_rewrite.byte": pkg_tcpip
+"lib_test/test_rewrite.byte": pkg_tcpip.arpv4
+"lib_test/test_rewrite.byte": pkg_tcpip.ethif
+"lib_test/test_rewrite.byte": pkg_tcpip.icmpv4
+"lib_test/test_rewrite.byte": pkg_tcpip.ipv4
+"lib_test/test_rewrite.byte": pkg_tcpip.ipv6
+"lib_test/test_rewrite.byte": pkg_tcpip.tcp
+"lib_test/test_rewrite.byte": pkg_tcpip.udp
 "lib_test/test_rewrite.byte": use_mirage-nat
 "lib_test/test_rewrite.byte": use_mirage-nat-hashtable
 <lib_test/*.ml{,i,y}>: pkg_alcotest
@@ -72,6 +100,13 @@ true: annot, bin_annot
 <lib_test/*.ml{,i,y}>: pkg_oUnit
 <lib_test/*.ml{,i,y}>: pkg_rresult
 <lib_test/*.ml{,i,y}>: pkg_tcpip
+<lib_test/*.ml{,i,y}>: pkg_tcpip.arpv4
+<lib_test/*.ml{,i,y}>: pkg_tcpip.ethif
+<lib_test/*.ml{,i,y}>: pkg_tcpip.icmpv4
+<lib_test/*.ml{,i,y}>: pkg_tcpip.ipv4
+<lib_test/*.ml{,i,y}>: pkg_tcpip.ipv6
+<lib_test/*.ml{,i,y}>: pkg_tcpip.tcp
+<lib_test/*.ml{,i,y}>: pkg_tcpip.udp
 <lib_test/*.ml{,i,y}>: use_mirage-nat
 <lib_test/*.ml{,i,y}>: use_mirage-nat-hashtable
 "lib_test/test_rewrite.byte": custom
