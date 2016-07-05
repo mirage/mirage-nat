@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 7e37eadd4d424c2c39115ca3a73a6c02)
+# DO NOT EDIT (digest: be04bb66bc983e9114317a51ce53fe03)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -29,20 +29,6 @@ true: annot, bin_annot
 <lib/hashtable/*.ml{,i,y}>: pkg_mirage-profile
 <lib/hashtable/*.ml{,i,y}>: pkg_tcpip
 <lib/hashtable/*.ml{,i,y}>: use_mirage-nat
-# Library mirage-nat-irmin
-"lib/irmin/mirage-nat-irmin.cmxs": use_mirage-nat-irmin
-<lib/irmin/*.ml{,i,y}>: pkg_cstruct
-<lib/irmin/*.ml{,i,y}>: pkg_ipaddr
-<lib/irmin/*.ml{,i,y}>: pkg_irmin
-<lib/irmin/*.ml{,i,y}>: pkg_irmin-network-datastores
-<lib/irmin/*.ml{,i,y}>: pkg_irmin.mem
-<lib/irmin/*.ml{,i,y}>: pkg_lwt
-<lib/irmin/*.ml{,i,y}>: pkg_mirage-profile
-<lib/irmin/*.ml{,i,y}>: pkg_sexplib
-<lib/irmin/*.ml{,i,y}>: pkg_sexplib.syntax
-<lib/irmin/*.ml{,i,y}>: pkg_tc
-<lib/irmin/*.ml{,i,y}>: pkg_tcpip
-<lib/irmin/*.ml{,i,y}>: use_mirage-nat
 # Executable randomized_tests
 "lib_test/test_randomized.byte": oasis_executable_randomized_tests_byte
 <lib_test/*.ml{,i,y}>: oasis_executable_randomized_tests_byte
@@ -58,18 +44,6 @@ true: annot, bin_annot
 "lib_test/test_randomized.byte": use_mirage-nat
 <lib_test/*.ml{,i,y}>: pkg_arbitrary-network
 <lib_test/*.ml{,i,y}>: pkg_quickcheck
-# Executable test_decompose
-<lib_test/test_decompose.{native,byte}>: oasis_executable_test_decompose_byte
-<lib_test/*.ml{,i,y}>: oasis_executable_test_decompose_byte
-<lib_test/test_decompose.{native,byte}>: pkg_alcotest
-<lib_test/test_decompose.{native,byte}>: pkg_cstruct
-<lib_test/test_decompose.{native,byte}>: pkg_ipaddr
-<lib_test/test_decompose.{native,byte}>: pkg_lwt
-<lib_test/test_decompose.{native,byte}>: pkg_mirage-profile
-<lib_test/test_decompose.{native,byte}>: pkg_oUnit
-<lib_test/test_decompose.{native,byte}>: pkg_tcpip
-<lib_test/test_decompose.{native,byte}>: use_mirage-nat
-<lib_test/test_decompose.{native,byte}>: custom
 # Executable test_rewrite
 "lib_test/test_rewrite.byte": oasis_executable_test_rewrite_byte
 <lib_test/*.ml{,i,y}>: oasis_executable_test_rewrite_byte

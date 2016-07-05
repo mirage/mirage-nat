@@ -20,7 +20,7 @@ Flag irmin
 
 Library "mirage-nat"
   Path: lib
-  Modules: Mirage_nat, Nat_decompose, Nat_shims
+  Modules: Mirage_nat, Nat_shims
   InternalModules: Nat_rewrite, Nat_translations
   BuildDepends: ipaddr, tcpip, tcpip, cstruct, lwt, mirage-profile
 
@@ -30,15 +30,6 @@ Library "mirage-nat-hashtable"
   FindlibParent: mirage-nat
   Modules: Mirage_nat_hashtable
   BuildDepends: ipaddr, tcpip, cstruct, lwt, mirage-profile, mirage-nat
-
-Library "mirage-nat-irmin"
-  Build$: flag(irmin)
-  Path: lib/irmin
-  Findlibname: irmin
-  FindlibParent: mirage-nat
-  Modules: Mirage_nat_irmin
-  InternalModules: Storage
-  BuildDepends: ipaddr, tcpip, cstruct, sexplib, sexplib.syntax, tc, irmin-network-datastores, irmin, irmin.mem, lwt, mirage-profile, mirage-nat
 
 Executable randomized_tests
   Build$: flag(randomized) && flag(tests)
@@ -51,16 +42,6 @@ Test randomized_tests
   Run$: flag(randomized) && flag(tests)
   Command: $randomized_tests
 
-Executable test_decompose
-  Build$: flag(tests)
-  Install: false
-  Path: lib_test
-  Custom: true
-  CompiledObject: best
-  MainIs: test_decompose.ml
-  ByteOpt: -g
-  BuildDepends: oUnit, alcotest, mirage-nat
-
 Executable test_rewrite
   Build$: flag(tests)
   Install: false
@@ -69,10 +50,6 @@ Executable test_rewrite
   MainIs: test_rewrite.ml
   ByteOpt: -g
   BuildDepends: oUnit, alcotest, mirage-nat, mirage-nat.hashtable, lwt.unix, io-page.unix
-
-Test test_decompose
-  Run$: flag(tests)
-  Command: $test_decompose
 
 Test test_rewrite
   Run$: flag(tests)

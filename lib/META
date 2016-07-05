@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: b14a3df73edfcef51bf75aa78d9251a0)
+# DO NOT EDIT (digest: 83689c02d612409184ab441f568c6cc6)
 version = "0.6.0"
 description = "an embryonic NAT module"
 requires = "ipaddr tcpip tcpip cstruct lwt mirage-profile"
@@ -8,18 +8,6 @@ archive(byte, plugin) = "mirage-nat.cma"
 archive(native) = "mirage-nat.cmxa"
 archive(native, plugin) = "mirage-nat.cmxs"
 exists_if = "mirage-nat.cma"
-package "irmin" (
- version = "0.6.0"
- description = "an embryonic NAT module"
- requires =
- "ipaddr tcpip cstruct sexplib sexplib.syntax tc irmin-network-datastores irmin irmin.mem lwt mirage-profile mirage-nat"
- archive(byte) = "mirage-nat-irmin.cma"
- archive(byte, plugin) = "mirage-nat-irmin.cma"
- archive(native) = "mirage-nat-irmin.cmxa"
- archive(native, plugin) = "mirage-nat-irmin.cmxs"
- exists_if = "mirage-nat-irmin.cma"
-)
-
 package "hashtable" (
  version = "0.6.0"
  description = "an embryonic NAT module"
