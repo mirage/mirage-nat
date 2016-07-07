@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 72cd7df36c7bfcebb48628eda654e5ad)
+# DO NOT EDIT (digest: 87a766feed00d3982ae66d6c5ad7cc8a)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -18,6 +18,7 @@ true: annot, bin_annot
 "lib/mirage-nat.cmxs": use_mirage-nat
 <lib/*.ml{,i,y}>: pkg_cstruct
 <lib/*.ml{,i,y}>: pkg_ipaddr
+<lib/*.ml{,i,y}>: pkg_logs
 <lib/*.ml{,i,y}>: pkg_lwt
 <lib/*.ml{,i,y}>: pkg_mirage-profile
 <lib/*.ml{,i,y}>: pkg_rresult
@@ -33,6 +34,7 @@ true: annot, bin_annot
 "lib/hashtable/mirage-nat-hashtable.cmxs": use_mirage-nat-hashtable
 <lib/hashtable/*.ml{,i,y}>: pkg_cstruct
 <lib/hashtable/*.ml{,i,y}>: pkg_ipaddr
+<lib/hashtable/*.ml{,i,y}>: pkg_logs
 <lib/hashtable/*.ml{,i,y}>: pkg_lwt
 <lib/hashtable/*.ml{,i,y}>: pkg_mirage-profile
 <lib/hashtable/*.ml{,i,y}>: pkg_rresult
@@ -52,6 +54,7 @@ true: annot, bin_annot
 "lib_test/test_randomized.byte": pkg_arbitrary-network
 "lib_test/test_randomized.byte": pkg_cstruct
 "lib_test/test_randomized.byte": pkg_ipaddr
+"lib_test/test_randomized.byte": pkg_logs
 "lib_test/test_randomized.byte": pkg_lwt
 "lib_test/test_randomized.byte": pkg_mirage-profile
 "lib_test/test_randomized.byte": pkg_oUnit
@@ -75,6 +78,8 @@ true: annot, bin_annot
 "lib_test/test_rewrite.byte": pkg_cstruct
 "lib_test/test_rewrite.byte": pkg_io-page.unix
 "lib_test/test_rewrite.byte": pkg_ipaddr
+"lib_test/test_rewrite.byte": pkg_logs
+"lib_test/test_rewrite.byte": pkg_logs.fmt
 "lib_test/test_rewrite.byte": pkg_lwt
 "lib_test/test_rewrite.byte": pkg_lwt.unix
 "lib_test/test_rewrite.byte": pkg_mirage-profile
@@ -94,6 +99,8 @@ true: annot, bin_annot
 <lib_test/*.ml{,i,y}>: pkg_cstruct
 <lib_test/*.ml{,i,y}>: pkg_io-page.unix
 <lib_test/*.ml{,i,y}>: pkg_ipaddr
+<lib_test/*.ml{,i,y}>: pkg_logs
+<lib_test/*.ml{,i,y}>: pkg_logs.fmt
 <lib_test/*.ml{,i,y}>: pkg_lwt
 <lib_test/*.ml{,i,y}>: pkg_lwt.unix
 <lib_test/*.ml{,i,y}>: pkg_mirage-profile

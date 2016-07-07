@@ -22,7 +22,7 @@ Library "mirage-nat"
   Path: lib
   Modules: Mirage_nat, Nat_shims
   InternalModules: Nat_rewrite, Nat_translations, Nat_decompose
-  BuildDepends: ipaddr, tcpip, tcpip.ethif, tcpip.arpv4, tcpip.ipv4, tcpip.ipv6, tcpip.icmpv4, tcpip.udp, tcpip.tcp, cstruct, lwt, mirage-profile, rresult
+  BuildDepends: ipaddr, tcpip, tcpip.ethif, tcpip.arpv4, tcpip.ipv4, tcpip.ipv6, tcpip.icmpv4, tcpip.udp, tcpip.tcp, cstruct, lwt, mirage-profile, rresult, logs
 
 Library "mirage-nat-hashtable"
   Path: lib/hashtable
@@ -49,7 +49,7 @@ Executable test_rewrite
   Custom: true
   MainIs: test_rewrite.ml
   ByteOpt: -g
-  BuildDepends: oUnit, alcotest, mirage-nat, mirage-nat.hashtable, lwt.unix, io-page.unix
+  BuildDepends: oUnit, alcotest, mirage-nat, mirage-nat.hashtable, lwt.unix, io-page.unix, logs.fmt
 
 Test test_rewrite
   Run$: flag(tests)

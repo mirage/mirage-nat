@@ -16,15 +16,15 @@ let (>>=) = Rresult.(>>=)
 
 let decompose buf =
   let open Rresult in
-  let get_transport proto buf =
+  let get_transport proto b =
     match Ipv4_packet.Unmarshal.int_to_protocol proto with
     | None -> Result.Ok None
     | Some `ICMP ->
-      Icmpv4_packet.Unmarshal.of_cstruct buf >>= fun icmp -> Result.Ok (Some (Icmp icmp))
+      Icmpv4_packet.Unmarshal.of_cstruct b >>= fun icmp -> Result.Ok (Some (Icmp icmp))
     | Some `TCP ->
-      Tcp.Tcp_packet.Unmarshal.of_cstruct buf >>= fun tcp -> Result.Ok (Some (Tcp tcp))
+      Tcp.Tcp_packet.Unmarshal.of_cstruct b >>= fun tcp -> Result.Ok (Some (Tcp tcp))
     | Some `UDP ->
-      Udp_packet.Unmarshal.of_cstruct buf >>= fun udp -> Result.Ok (Some (Udp udp))
+      Udp_packet.Unmarshal.of_cstruct b >>= fun udp -> Result.Ok (Some (Udp udp))
   in
   Ethif_packet.Unmarshal.of_cstruct buf >>= fun (e, e_payload) ->
   match e.ethertype with
@@ -66,7 +66,7 @@ let rewrite_packet ~ethernet:(eth_header, eth_payload)
      match transport with
      | Icmp _ -> Result.Error "I don't rewrite ICMP packets"
      | Udp (udp_header, udp_payload) ->
-       let pseudoheader = Ipv4_packet.Marshal.pseudoheader ~src ~dst ~proto:`UDP (Cstruct.len udp_payload) in
+       let pseudoheader = Ipv4_packet.Marshal.pseudoheader ~src ~dst ~proto:`UDP (Cstruct.len udp_payload + Ipv4_wire.sizeof_ipv4 + Udp_wire.sizeof_udp) in
        let new_transport_header = { udp_header with src_port; dst_port } in
        (* mutate the transport layer first,
         * so we calculate the correct checksum when we
@@ -74,11 +74,22 @@ let rewrite_packet ~ethernet:(eth_header, eth_payload)
        Udp_packet.Marshal.into_cstruct
          ~pseudoheader new_transport_header
          ~payload:udp_payload ip_payload >>= fun () ->
-       Ipv4_packet.Marshal.into_cstruct ~payload:ip_payload new_ip_header eth_payload
+       Logs.debug (fun f -> f "UDP header rewritten.  ethernet payload now looks like this: %a" Cstruct.hexdump_pp eth_payload);
+       Ipv4_packet.Marshal.into_cstruct ~payload:ip_payload new_ip_header eth_payload;
+       Logs.debug (fun f -> f "IP header rewritten.  ethernet payload now looks like this: %a" Cstruct.hexdump_pp eth_payload);
+       Result.Ok ()
      | Tcp (tcp_header, tcp_payload) ->
-       let pseudoheader = Ipv4_packet.Marshal.pseudoheader ~src ~dst ~proto:`TCP (Cstruct.len tcp_payload) in
+       (* TODO: unfortunately, in order to correctly figure out the pseudoheader (and thus the TCP checksum),
+        * we need to know the length field of the IPv4 header.  That means we need to know the *overall* length,
+        * which means we need to know how many bytes are required to marshal the TCP options. *)
+       let options_buf = Cstruct.create 60 in
+       let options_length = Tcp.Options.marshal options_buf tcp_header.options in
+       let pseudoheader = Ipv4_packet.Marshal.pseudoheader ~src ~dst ~proto:`TCP (Tcp.Tcp_wire.sizeof_tcp + options_length + Ipv4_wire.sizeof_ipv4 + Cstruct.len tcp_payload) in
        let new_transport_header = { tcp_header with src_port; dst_port } in
        Tcp.Tcp_packet.Marshal.into_cstruct
          ~pseudoheader new_transport_header
-         ~payload:tcp_payload ip_payload >>= fun _ ->
-       Ipv4_packet.Marshal.into_cstruct ~payload:ip_payload new_ip_header eth_payload
+         ~payload:tcp_payload ip_payload >>= fun bytes ->
+       Logs.debug (fun f -> f "TCP header rewritten (%d bytes).  ethernet payload now looks like this: %a" bytes Cstruct.hexdump_pp eth_payload);
+       Ipv4_packet.Marshal.into_cstruct ~payload:ip_payload new_ip_header eth_payload;
+       Logs.debug (fun f -> f "rewrote a packet.  ethernet payload now looks like this: %a" Cstruct.hexdump_pp eth_payload);
+       Result.Ok ()

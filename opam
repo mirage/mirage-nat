@@ -25,6 +25,7 @@ depends: [
   "mirage-profile"
   "lwt"
   "rresult"
+  "logs"
   "tcpip" { >= "2.9.0" }
   "ounit" {test}
   "alcotest" {test}

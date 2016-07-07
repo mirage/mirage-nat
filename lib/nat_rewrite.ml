@@ -2,8 +2,11 @@ open Ipaddr
 open Mirage_nat
 
 module Make(Nat_table : Mirage_nat.Lookup) : sig
-  include Mirage_nat.S with type config = Nat_table.config 
+  include Mirage_nat.S with type config = Nat_table.config
 end = struct
+  let src = Logs.Src.create "nat-rewrite" ~doc:"Mirage NAT packet rewriter"
+  module Log = (val Logs.src_log src : Logs.LOG)
+
   module N = Nat_table
   type t = N.t
   type config = Nat_table.config
@@ -22,31 +25,36 @@ end = struct
        will be sending packets via IP.write, which itself calculates and inserts
        the proper checksum before sending the packet. *)
     match Nat_decompose.decompose frame with
-    | Result.Error _ -> Lwt.return Untranslated (* un-NATtable packet; drop it like it's hot *)
-      (* TODO: use logs and emit a debug message here *)
+    | Result.Error s -> Log.debug (fun f -> f "parsing of a packet presented for translation failed: %s" s);
+      Lwt.return Untranslated (* un-NATtable packet; drop it like it's hot *)
     | Result.Ok { ethernet; network; transport } ->
        match network, (Nat_decompose.ports transport) with
-      | Ipv6 _, _ -> Lwt.return Untranslated (* TODO, obviously *)
-      | Ipv4 _, None -> Lwt.return Untranslated (* TODO: don't just drop all packets that aren't TCP/UDP *)
+      | Ipv6 _, _ -> Log.debug (fun f -> f "Ignoring an IPv6 packet"); Lwt.return Untranslated (* TODO, obviously *)
+      | Ipv4 _, None -> Log.debug (fun f -> f "Ignoring a non-TCP/UDP packet: %a" Cstruct.hexdump_pp frame);
+        Lwt.return Untranslated (* TODO: don't just drop all packets that aren't TCP/UDP *)
       | Ipv4 (ip_header, ip_payload), Some (proto, transport, sport, dport) ->
         let (>>=) = Lwt.bind in
         (* got everything; do the lookup *)
         N.lookup table proto ((V4 ip_header.src), sport)
            ((V4 ip_header.dst), dport) >>= function
-        | None -> Lwt.return Untranslated (* don't autocreate new entries *) 
+        | None ->
+           Lwt.return Untranslated (* don't autocreate new entries *)
         | Some (_expiry, ((V4 new_src, new_sport), (V4 new_dst, new_dport))) ->
         (* TODO: we should probably refuse to pass TTL = 0 and instead send an
             ICMP message back to the sender *)
             match Nat_decompose.rewrite_packet ~ethernet ~network:(ip_header, ip_payload) ~transport ~src:(new_src, new_sport) ~dst:(new_dst, new_dport) with
             | Result.Ok () -> Lwt.return Translated
-            | Result.Error _ -> Lwt.return Untranslated
+            | Result.Error s -> Log.warn (fun f -> f "Translating a packet failed: %s; packet content: %a" s Cstruct.hexdump_pp frame);
+              Lwt.return Untranslated
 
   let add_entry mode table frame
       (other_xl_ip, other_xl_port)
       (final_destination_ip, final_destination_port) =
     (* decompose this frame; if we can't, bail out now *)
     match Nat_decompose.decompose frame with
-    | Result.Error _ -> Lwt.return Unparseable
+    | Result.Error s ->
+      Logs.debug (fun f -> f "add_entry failing on unparseable packet, reason %s. Packet dump: %a" s Cstruct.hexdump_pp frame);
+      Lwt.return Unparseable
     | Result.Ok { ethernet; network; transport } ->
       match network, Nat_decompose.ports transport with
       | Ipv6 _ , _ | Arp _, _ | Ipv4 _, None ->
