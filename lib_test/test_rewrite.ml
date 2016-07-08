@@ -133,10 +133,13 @@ let check_entry expected (actual : ((Ipaddr.t * int) * (Ipaddr.t * int)) option)
 
 (* given a source IP, destination IP, protocol, and TTL,
    check to see whether an IPv4 packet has those fields set. *)
-let assert_ipv4_has exp_src exp_dst exp_proto exp_ttl ipv4 =
-  match Ipv4_packet.Unmarshal.of_cstruct ipv4 with
+let assert_ipv4_has exp_src exp_dst exp_proto exp_ttl frame =
+  match Nat_decompose.decompose frame with
   | Result.Error s -> Alcotest.fail s
-  | Result.Ok (ipv4_header, ipv4_payload) ->
+  | Result.Ok { ethernet; network; transport } ->
+  match network with
+  | Arp _ | Ipv6 _ -> Alcotest.fail "ipv4 only please!"
+  | Ipv4 (ipv4_header, ipv4_payload) ->
     Alcotest.check ip "ip src" exp_src ipv4_header.src;
     Alcotest.check ip "ip dst" exp_dst ipv4_header.dst;
     Alcotest.check Alcotest.int "protocol" (int_of_protocol exp_proto) ipv4_header.proto;
@@ -172,7 +175,7 @@ let assert_payloads_match a b =
 let assert_translates table direction frame =
   Rewriter.translate table frame >>= function
   | Untranslated -> Alcotest.fail "Expected translateable frame wasn't rewritten"
-  | Translated -> Printf.printf "packet translated OK.  Decomposing...\n";
+  | Translated _ -> Printf.printf "packet translated OK.  Decomposing...\n";
     Cstruct.hexdump frame;
     match Nat_decompose.decompose frame with
     | Result.Ok _ -> Printf.printf "decomposition succeeded.\n"; Lwt.return_unit
@@ -373,12 +376,12 @@ let add_many_entries how_many =
       Printf.printf "%d more entries...\n%!" n;
       let (packet, values) = random_packet () in
       translate t packet >>= function
-      | Translated ->
+      | Translated _ ->
         Printf.printf "already a Source entry for the packet; trying again\n%!";
         shove_entries n (* generated an overlap; try again *)
       | Untranslated ->
         translate t packet >>= function
-        | Translated ->
+        | Translated _ ->
           Printf.printf "already a Destination entry for the packet; trying again\n%!";
           shove_entries n
         | Untranslated ->

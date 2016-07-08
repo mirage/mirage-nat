@@ -43,7 +43,7 @@ end = struct
         (* TODO: we should probably refuse to pass TTL = 0 and instead send an
             ICMP message back to the sender *)
             match Nat_decompose.rewrite_packet ~ethernet ~network:(ip_header, ip_payload) ~transport ~src:(new_src, new_sport) ~dst:(new_dst, new_dport) with
-            | Result.Ok () -> Lwt.return Translated
+            | Result.Ok () -> Lwt.return (Translated (V4 new_dst))
             | Result.Error s -> Log.warn (fun f -> f "Translating a packet failed: %s; packet content: %a" s Cstruct.hexdump_pp frame);
               Lwt.return Untranslated
 

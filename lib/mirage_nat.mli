@@ -18,7 +18,7 @@ type mode =
   | Nat
 
 type translate_result =
-  | Translated
+  | Translated of Ipaddr.t
   | Untranslated
 
 type time = int64
