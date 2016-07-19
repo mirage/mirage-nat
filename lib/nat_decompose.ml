@@ -76,7 +76,7 @@ let rewrite_packet ~ethernet:(eth_header, eth_payload)
          ~payload:udp_payload ip_payload >>= fun () ->
        Logs.debug (fun f -> f "UDP header rewritten.  ethernet payload now looks like this: %a" Cstruct.hexdump_pp eth_payload);
        Ipv4_packet.Marshal.into_cstruct ~payload:ip_payload new_ip_header eth_payload;
-       let header = Cstruct.set_len eth_payload Ipv4_wire.sizeof_ipv4 in
+       let header = Cstruct.sub eth_payload 0 Ipv4_wire.sizeof_ipv4 in
        Ipv4_wire.set_ipv4_csum header 0;
        let csum = Tcpip_checksum.ones_complement header in
        Ipv4_wire.set_ipv4_csum header csum;
@@ -95,7 +95,7 @@ let rewrite_packet ~ethernet:(eth_header, eth_payload)
          ~payload:tcp_payload ip_payload >>= fun bytes ->
        Logs.debug (fun f -> f "TCP header rewritten (%d bytes).  ethernet payload now looks like this: %a" bytes Cstruct.hexdump_pp eth_payload);
        Ipv4_packet.Marshal.into_cstruct ~payload:ip_payload new_ip_header eth_payload;
-       let header = Cstruct.set_len eth_payload Ipv4_wire.sizeof_ipv4 in
+       let header = Cstruct.sub eth_payload 0 Ipv4_wire.sizeof_ipv4 in
        Ipv4_wire.set_ipv4_csum header 0;
        let csum = Tcpip_checksum.ones_complement header in
        Ipv4_wire.set_ipv4_csum header csum;
