@@ -23,13 +23,10 @@ type translate_result =
 
 type time = int64
 
-module type CLOCK = sig
-  val now : unit -> time
-end
+module type CLOCK = Mirage_clock_lwt.MCLOCK
 
-module type TIME = sig
-  val sleep : float -> unit Lwt.t
-end
+module type TIME = Mirage_time_lwt.S
+
 module type S = sig
   type t
   type config

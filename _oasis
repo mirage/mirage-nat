@@ -14,15 +14,11 @@ Flag randomized
   Description: build randomized tests (requires arbitrary-network)
   Default: false
 
-Flag irmin
-  Description: build Irmin-backed NAT table
-  Default: false
-
 Library "mirage-nat"
   Path: lib
   Modules: Mirage_nat, Nat_shims
   InternalModules: Nat_rewrite, Nat_translations, Nat_decompose
-  BuildDepends: ipaddr, tcpip, tcpip.ethif, tcpip.arpv4, tcpip.ipv4, tcpip.ipv6, tcpip.icmpv4, tcpip.udp, tcpip.tcp, cstruct, lwt, mirage-profile, rresult, logs
+  BuildDepends: ipaddr, tcpip, tcpip.ethif, tcpip.arpv4, tcpip.ipv4, tcpip.ipv6, tcpip.icmpv4, tcpip.udp, tcpip.tcp, cstruct, lwt, mirage-profile, rresult, logs, mirage-time, mirage-clock
 
 Library "mirage-nat-hashtable"
   Path: lib/hashtable

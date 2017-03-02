@@ -1,4 +1,5 @@
-PKG mirage-types tcpip ipaddr lwt mirage-profile rresult logs
+PKG mirage-clock mirage-time
+PKG tcpip ipaddr lwt mirage-profile rresult logs
 PKG oUnit
 S lib
 S lib/hashtable

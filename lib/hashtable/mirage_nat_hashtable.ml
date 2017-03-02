@@ -10,28 +10,31 @@ open Mirage_nat
 
 let (>>=) = Lwt.bind
 
-module Storage(Clock : CLOCK)(Time: TIME) : sig
+module Storage(Clock : Mirage_clock_lwt.MCLOCK)(Time: TIME) : sig
   include Mirage_nat.Lookup with type config = unit
 end = struct
 
   type t = {
-    store: ((protocol * mapping), (int64 * mapping)) Hashtbl.t
+    store: ((protocol * mapping), (int64 * mapping)) Hashtbl.t;
+    clock: Clock.t;
   }
 
   type config = unit
 
   let rec tick t () =
     MProf.Trace.label "Mirage_nat.tick";
-    let expiry_check_interval = 6. in
-    let now = Clock.now () in
+    let expiry_check_interval = Duration.of_sec 6 in
+    let now = Clock.elapsed_ns t.clock in
     Hashtbl.iter (fun key (expiry, _) ->
-        match compare expiry now with
+        match Int64.compare expiry now with
         | n when n < 0 -> Hashtbl.remove t.store key
         | _ -> ()
       ) t.store;
-    Time.sleep expiry_check_interval >>= tick t
+    Time.sleep_ns expiry_check_interval >>= tick t
 
-  let empty () = Lwt.return { store = Hashtbl.create 21 } (* initial size is completely arbitrary *)
+  let empty clock =
+    (* initial size is completely arbitrary *)
+    Lwt.return { store = Hashtbl.create 21; clock }
 
   let lookup t proto ~source ~destination =
     MProf.Trace.label "Mirage_nat_hashtable.lookup.read";
@@ -54,7 +57,7 @@ end = struct
                         the lookups are part of differing pairs -- this
                         situation is pathological, but possible *)
     | false, false ->
-      let expiration = Int64.add (Clock.now ()) expiry_interval in
+      let expiration = Int64.add (Clock.elapsed_ns t.clock) expiry_interval in
       Hashtbl.add t.store (proto, mappings.internal_lookup) (expiration, mappings.internal_mapping);
       Hashtbl.add t.store (proto, mappings.external_lookup) (expiration, mappings.external_mapping);
       Lwt.return (Some t)
