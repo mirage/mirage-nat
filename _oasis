@@ -42,10 +42,9 @@ Executable test_rewrite
   Build$: flag(tests)
   Install: false
   Path: lib_test
-  Custom: true
   MainIs: test_rewrite.ml
   ByteOpt: -g
-  BuildDepends: oUnit, alcotest, mirage-nat, mirage-nat.hashtable, lwt.unix, io-page.unix, logs.fmt
+  BuildDepends: oUnit, alcotest, mirage-nat, mirage-nat.hashtable, lwt.unix, io-page.unix, logs.fmt, mirage-clock-unix
 
 Test test_rewrite
   Run$: flag(tests)

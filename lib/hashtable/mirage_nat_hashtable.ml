@@ -11,7 +11,7 @@ open Mirage_nat
 let (>>=) = Lwt.bind
 
 module Storage(Clock : Mirage_clock_lwt.MCLOCK)(Time: TIME) : sig
-  include Mirage_nat.Lookup with type config = unit
+  include Mirage_nat.Lookup with type config = Clock.t
 end = struct
 
   type t = {
@@ -19,7 +19,7 @@ end = struct
     clock: Clock.t;
   }
 
-  type config = unit
+  type config = Clock.t
 
   let rec tick t () =
     MProf.Trace.label "Mirage_nat.tick";

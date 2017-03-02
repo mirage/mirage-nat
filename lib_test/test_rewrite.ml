@@ -50,7 +50,9 @@ let cstruct =
   end in
   (module M : Alcotest.TESTABLE with type t = M.t)
 
-module Rewriter = Mirage_nat_hashtable.Make(Unix_clock)(Unix_time)
+module Rewriter = Mirage_nat_hashtable.Make(Mclock)(Unix_time)
+
+let clock = Lwt_main.run (Mclock.connect ())
 
 module Default_values = struct
   let smac_addr = Macaddr.of_string_exn "00:16:3e:5e:6c:09"
@@ -101,7 +103,7 @@ module Constructors = struct
     in
     let table () =
       let open Rewriter in
-      empty () >>= fun t ->
+      empty clock >>= fun t ->
       add_redirect t ip_packet
           ((V4 internal_xl), internal_xl_port)
           ((V4 internal_client), internal_client_port) >>= function
@@ -117,7 +119,7 @@ module Constructors = struct
     Cstruct.hexdump ip_packet;
     let table () =
       let open Rewriter in
-      empty () >>= fun t ->
+      empty clock >>= fun t ->
       add_nat t ip_packet ((V4 xl), xlport) >>= function
       | Ok -> Lwt.return t
       | Overlap | Unparseable -> Alcotest.fail "Failed to insert test data into table structure"
@@ -262,7 +264,7 @@ let test_add_nat_valid_pkt () =
   let payload = Cstruct.of_string "GET / HTTP/1.1\r\n" in
   let frame = Constructors.full_packet ~payload ~proto ~ttl:52 ~src ~dst ~src_port ~dst_port in
   let open Rewriter in
-  empty () >>= fun table ->
+  empty clock >>= fun table ->
   add_nat table frame ((V4 xl), xlport) >>= function
   | Overlap -> Alcotest.fail "add_nat claimed overlap when inserting into an
                  empty table"
@@ -309,7 +311,7 @@ let test_add_nat_nonsense () =
   let mangled_looking = Constructors.full_packet ~payload ~proto ~ttl:52 ~src:xl ~dst ~src_port ~dst_port in
   Ipv4_wire.set_ipv4_hlen_version (Cstruct.shift mangled_looking Ethif_wire.sizeof_ethernet) 0xff;
   let open Rewriter in
-  empty () >>= fun t ->
+  empty clock >>= fun t ->
   add_nat t mangled_looking ((Ipaddr.V4 xl), xlport) >>= function
   | Ok -> Alcotest.fail "add_nat happily took a mangled packet"
   | Overlap -> Alcotest.fail
@@ -322,13 +324,13 @@ let test_add_nat_broadcast () =
   let broadcast = Constructors.full_packet ~payload ~proto:Tcp ~ttl:30 ~src
                     ~dst:broadcast_dst ~src_port ~dst_port in
   let open Rewriter in
-  empty () >>= fun t ->
+  empty clock >>= fun t ->
   add_nat t broadcast ((Ipaddr.V4 xl), xlport) >>= function
   | Ok | Overlap -> Alcotest.fail "add_nat operated on a broadcast packet"
   | Unparseable ->
     (* try just an ethernet frame *)
     let e = zero_cstruct (Cstruct.create Ethif_wire.sizeof_ethernet) in
-    empty () >>= fun t ->
+    empty clock >>= fun t ->
     add_nat t e ((Ipaddr.V4 xl), xlport) >>= function
     | Ok | Overlap ->
       Alcotest.fail "add_nat claims to have succeeded with a bare ethernet frame"
@@ -369,7 +371,7 @@ let add_many_entries how_many =
   let fixed_internal_ip = random_ipv4 () in
   let fixed_external_ip = random_ipv4 () in
   let open Rewriter in
-  empty () >>= fun t ->
+  empty clock >>= fun t ->
   let rec shove_entries = function
     | n when n <= 0 -> Lwt.return_unit
     | n ->

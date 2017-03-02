@@ -32,6 +32,7 @@ depends: [
   "ounit" {test}
   "alcotest" {test}
   "arbitrary-test" {test}
+  "mirage-clock-unix" {test}
 ]
 depopts: [
   "irmin-network-datastores"

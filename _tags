@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 175fb088baff388730c09911b7a9a6cb)
+# DO NOT EDIT (digest: 1c8e16a2566f4d7d662e58475a2d07e1)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -89,6 +89,7 @@ true: annot, bin_annot
 "lib_test/test_rewrite.byte": pkg_lwt
 "lib_test/test_rewrite.byte": pkg_lwt.unix
 "lib_test/test_rewrite.byte": pkg_mirage-clock
+"lib_test/test_rewrite.byte": pkg_mirage-clock-unix
 "lib_test/test_rewrite.byte": pkg_mirage-profile
 "lib_test/test_rewrite.byte": pkg_mirage-time
 "lib_test/test_rewrite.byte": pkg_oUnit
@@ -112,6 +113,7 @@ true: annot, bin_annot
 <lib_test/*.ml{,i,y}>: pkg_lwt
 <lib_test/*.ml{,i,y}>: pkg_lwt.unix
 <lib_test/*.ml{,i,y}>: pkg_mirage-clock
+<lib_test/*.ml{,i,y}>: pkg_mirage-clock-unix
 <lib_test/*.ml{,i,y}>: pkg_mirage-profile
 <lib_test/*.ml{,i,y}>: pkg_mirage-time
 <lib_test/*.ml{,i,y}>: pkg_oUnit
@@ -126,5 +128,4 @@ true: annot, bin_annot
 <lib_test/*.ml{,i,y}>: pkg_tcpip.udp
 <lib_test/*.ml{,i,y}>: use_mirage-nat
 <lib_test/*.ml{,i,y}>: use_mirage-nat-hashtable
-"lib_test/test_rewrite.byte": custom
 # OASIS_STOP
