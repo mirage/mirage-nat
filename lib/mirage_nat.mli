@@ -18,7 +18,7 @@ type mode =
   | Nat
 
 type translate_result =
-  | Translated of Ipaddr.t
+  | Translated of Nat_packet.t
   | Untranslated
 
 type time = int64
@@ -43,7 +43,7 @@ module type S = sig
     * on the Cstruct.t .  If the packet should be forwarded, return Some packet,
     * else return None.
     * This function is zero-copy and mutates values in the given Cstruct.  *)
-  val translate : t -> Cstruct.t -> translate_result Lwt.t
+  val translate : t -> Nat_packet.t -> translate_result Lwt.t
 
   (** given a table, a frame, and a translation IP and port,
     * put relevant entries for the (src_ip, src_port), (dst_ip, dst_port) from the
@@ -55,7 +55,7 @@ module type S = sig
          (dst_ip, dst_port), (src_ip, src_port)).
     * if insertion succeeded, return the new table;
     * otherwise, return an error type indicating the problem. *)
-  val add_nat : t -> Cstruct.t -> endpoint -> insert_result Lwt.t
+  val add_nat : t -> Nat_packet.t -> endpoint -> insert_result Lwt.t
 
   (** given a table, a frame from which (src_ip, src_port) and (xl_left_ip,
       xl_left_port) can be extracted (these are source and destination for the
@@ -68,7 +68,7 @@ module type S = sig
       ((xl_ip, xl_right_port), (dst_ip, dst_port)) to (src_ip, src_port).
     * if insertion succeeded, return the new table;
     * otherwise, return an error type indicating the problem. *)
-  val add_redirect : t -> Cstruct.t -> endpoint -> endpoint -> insert_result Lwt.t
+  val add_redirect : t -> Nat_packet.t -> endpoint -> endpoint -> insert_result Lwt.t
 end
 
 module type Lookup = sig

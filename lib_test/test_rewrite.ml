@@ -4,9 +4,6 @@ open Test_lib
 
 type direction = | Source | Destination
 
-let zero_cstruct cs =
-  Cstruct.memset cs 0; cs
-
 let int_of_protocol = function
   | Udp -> 17
   | Tcp -> 6
@@ -69,24 +66,18 @@ module Constructors = struct
 
   let full_packet ~payload ~proto ~ttl ~src ~dst ~src_port ~dst_port =
     let transport = match proto with
-    | Udp ->
-       let pseudoheader = Ipv4_packet.Marshal.pseudoheader ~src ~dst ~proto:`UDP (Cstruct.len payload + Ipv4_wire.sizeof_ipv4 + Udp_wire.sizeof_udp) in
-       Udp_packet.(Marshal.make_cstruct ~pseudoheader ~payload {src_port = src_port; dst_port = dst_port;})
-    | Tcp ->
-       (* for now we don't send packets with TCP options set, which makes this size calculation a bit easier *)
-       let pseudoheader = Ipv4_packet.Marshal.pseudoheader ~src ~dst ~proto:`TCP (Cstruct.len payload + Ipv4_wire.sizeof_ipv4 + Tcp.Tcp_wire.sizeof_tcp) in
-       Tcp.Tcp_packet.(Marshal.make_cstruct ~pseudoheader ~payload
-       {src_port = src_port; dst_port = dst_port;
-        sequence = Tcp.Sequence.of_int 0x432af310;
-        ack_number = Tcp.Sequence.zero;
-        urg = false; ack = false; psh = false; rst = false; syn = true; fin = false;
-        window = 536;
-        options = []; (* If this is changed, need to change the length sent to `pseudoheader` above *)
-       })
+    | Udp -> `UDP ({Udp_packet.src_port = src_port; dst_port = dst_port}, payload)
+    | Tcp -> `TCP (
+        {Tcp.Tcp_packet.src_port = src_port; dst_port = dst_port;
+         sequence = Tcp.Sequence.of_int 0x432af310;
+         ack_number = Tcp.Sequence.zero;
+         urg = false; ack = false; psh = false; rst = false; syn = true; fin = false;
+         window = 536;
+         options = []; (* If this is changed, need to change the length sent to `pseudoheader` above *)
+        }, payload)
     in
-    let ip = Ipv4_packet.(Marshal.make_cstruct ~payload:(Cstruct.concat [transport ; payload]) { src; dst; proto = int_of_protocol proto; ttl; options = (Cstruct.create 0) }) in
-    let ethernet = Ethif_packet.(Marshal.make_cstruct { source = Default_values.smac_addr; destination = Default_values.dmac_addr; ethertype = Ethif_wire.IPv4 }) in
-    Cstruct.concat [ethernet; ip; transport; payload]
+    let ip = { Ipv4_packet.src; dst; proto = int_of_protocol proto; ttl; options = (Cstruct.create 0) } in
+    `IPv4 (ip, transport)
  
   let ip_packet_and_redirect_table direction
       ~proto ~ttl
@@ -115,8 +106,7 @@ module Constructors = struct
   let ip_packet_and_nat_table
       ~proto ~ttl ~src ~dst ~xl ~src_port ~dst_port ~xlport =
     let ip_packet = full_packet ~payload:Default_values.payload ~proto ~ttl ~src ~dst ~src_port ~dst_port in
-    Printf.printf "made reference packet:\n";
-    Cstruct.hexdump ip_packet;
+    Format.printf "made reference packet: %a@." Nat_packet.pp ip_packet;
     let table () =
       let open Rewriter in
       empty clock >>= fun t ->
@@ -135,57 +125,66 @@ let check_entry expected (actual : ((Ipaddr.t * int) * (Ipaddr.t * int)) option)
 
 (* given a source IP, destination IP, protocol, and TTL,
    check to see whether an IPv4 packet has those fields set. *)
-let assert_ipv4_has exp_src exp_dst exp_proto exp_ttl frame =
-  match Nat_decompose.decompose frame with
-  | Result.Error s -> Alcotest.fail s
-  | Result.Ok { ethernet; network; transport } ->
-  match network with
-  | Arp _ | Ipv6 _ -> Alcotest.fail "ipv4 only please!"
-  | Ipv4 (ipv4_header, ipv4_payload) ->
+let assert_ipv4_has exp_src exp_dst exp_proto exp_ttl = function
+  | `IPv4 (ipv4_header, ipv4_payload) ->
+    let open Ipv4_packet in
     Alcotest.check ip "ip src" exp_src ipv4_header.src;
     Alcotest.check ip "ip dst" exp_dst ipv4_header.dst;
     Alcotest.check Alcotest.int "protocol" (int_of_protocol exp_proto) ipv4_header.proto;
     Alcotest.check Alcotest.int "ttl" exp_ttl ipv4_header.ttl
 
-let assert_transport_has exp_src_port exp_dst_port xl_frame =
-  match Nat_decompose.decompose xl_frame with
-  | Result.Error s -> Alcotest.fail s
-  | Result.Ok { ethernet; network; transport } ->
-    match Nat_decompose.ports transport with
-    | None -> Alcotest.fail "no transport layer in a translated packet"
-    | Some (proto, transport, src_port, dst_port) ->
+let assert_transport_has exp_src_port exp_dst_port = function
+  | `IPv4 (_, `TCP (tcp, _)) ->
+    let src_port, dst_port = Tcp.Tcp_packet.(tcp.src_port, tcp.dst_port) in
+    Alcotest.check Alcotest.int "source port" exp_src_port src_port;
+    Alcotest.check Alcotest.int "destination port" exp_dst_port dst_port
+  | `IPv4 (_, `UDP (udp, _)) ->
+    let src_port, dst_port = Udp_packet.(udp.src_port, udp.dst_port) in
     Alcotest.check Alcotest.int "source port" exp_src_port src_port;
     Alcotest.check Alcotest.int "destination port" exp_dst_port dst_port
 
-let assert_payloads_match a b =
-  let check () =
-  let (>>=) = Rresult.(>>=) in
-  Nat_decompose.decompose a >>= fun expected ->
-  Nat_decompose.decompose b >>= fun actual ->
-  match expected.transport, actual.transport with
-  | None, _ | _, None -> Result.Error "no transport in a payload match"
-  | Some (Udp (_, expected)), Some (Udp (_, actual)) | Some (Tcp (_, expected)), Some (Tcp (_, actual)) ->
-  Alcotest.check cstruct "Payload match failure"
-                     expected actual;
-                     Result.Ok ()
-  in
-  match check () with
-  | Result.Error s -> Alcotest.fail (s ^ " when checking payloads...")
-  | Result.Ok () -> ()
+let assert_payloads_match expected actual =
+  let `IPv4 (_, expected) = expected in
+  let `IPv4 (_, actual) = actual in
+  match expected, actual with
+  | `TCP (_, expected), `TCP (_, actual)
+  | `UDP (_, expected), `UDP (_, actual) ->
+    Alcotest.check cstruct "Payload match failure" expected actual
+  | _ ->
+    Alcotest.fail "Packets are from different protocols!"
 
+let assert_checksum_correct raw =
+  Format.printf "Check %a@." Cstruct.hexdump_pp raw;
+  match Ipv4_packet.Unmarshal.of_cstruct raw with
+  | Error e -> Alcotest.fail (Fmt.strf "assert_checksum failed: %s" e)
+  | Ok (ipv4_header, transport_packet) ->
+    Printf.printf "ipv4_header len = %d\n" (Cstruct.len raw - Cstruct.len transport_packet);
+    let proto =
+      match Ipv4_packet.(Unmarshal.int_to_protocol ipv4_header.proto) with
+      | Some (`TCP | `UDP as p) -> p
+      | _ -> assert false
+    in
+    Alcotest.(check bool) "Transport checksum correct" true
+      (Ipv4_packet.Unmarshal.verify_transport_checksum ~ipv4_header ~transport_packet ~proto)
 
-let assert_translates table direction frame =
-  Rewriter.translate table frame >>= function
-  | Untranslated -> Alcotest.fail "Expected translateable frame wasn't rewritten"
-  | Translated _ -> Printf.printf "packet translated OK.  Decomposing...\n";
-    Cstruct.hexdump frame;
-    match Nat_decompose.decompose frame with
-    | Result.Ok _ -> Printf.printf "decomposition succeeded.\n"; Lwt.return_unit
-    | Result.Error s ->
-                    Printf.printf "undecomposable frame:\n";
-                    Cstruct.hexdump frame;
-                    Alcotest.fail "Error decomposing frame after we translated it."
-
+let assert_translates table packet =
+  Rewriter.translate table packet >>= function
+  | Untranslated -> Alcotest.fail "Expected translateable packet wasn't rewritten"
+  | Translated packet ->
+    Format.printf "packet translated OK: %a...@." Nat_packet.pp packet;
+    let raw = Cstruct.concat @@ Nat_packet.to_cstruct packet in
+    assert_checksum_correct raw;
+    match Nat_packet.of_ipv4_packet raw with
+    | Ok loaded when Nat_packet.equal packet loaded -> Lwt.return packet
+    | Ok loaded -> Alcotest.fail (Fmt.strf "Packet changed by save/load! Saved:@.%a@.Got:@.%a"
+                                    Nat_packet.pp packet
+                                    Nat_packet.pp loaded
+                                 )
+    | Error e   -> Alcotest.fail (Fmt.strf "Failed to load saved packet! Saved:@.%a@.As:@.%a@.Error: %a"
+                                    Nat_packet.pp packet
+                                    Cstruct.hexdump_pp raw
+                                    Nat_packet.pp_error e
+                                 )
 
 let test_nat_ipv4 proto =
   let ttl = 4 in
@@ -194,7 +193,7 @@ let test_nat_ipv4 proto =
     ~dst_port ~xlport >>= fun (translated_packet, table) ->
   Constructors.ip_packet_and_nat_table ~proto ~ttl ~src ~dst ~xl ~src_port
     ~dst_port ~xlport >>= fun (untranslated_packet, _) ->
-  assert_translates table Source translated_packet >>= fun () ->
+  assert_translates table translated_packet >>= fun translated_packet ->
   assert_payloads_match untranslated_packet untranslated_packet;
   Printf.printf "untranslated packet matched itself, yay!\n";
   assert_payloads_match translated_packet translated_packet;
@@ -217,20 +216,20 @@ let test_add_redirect_valid_pkt () =
     ~outside_src_port:outside_requester_port ~external_xl_port:nat_external_port
     ~internal_xl:nat_internal_ip ~internal_xl_port:nat_internal_port
     ~internal_client:internal_client ~internal_client_port:internal_client_port
-  >>= fun (frame, table) ->
-  assert_translates table Source frame >>= fun () ->
-  let orig_frame = Constructors.full_packet ~proto ~ttl:52 ~src:outside_requester
+  >>= fun (packet, table) ->
+  assert_translates table packet >>= fun packet ->
+  let orig_packet = Constructors.full_packet ~proto ~ttl:52 ~src:outside_requester
       ~dst:nat_external_ip ~src_port:outside_requester_port
       ~dst_port:nat_external_port ~payload:Default_values.payload
   in
-  assert_payloads_match frame orig_frame;
-  (* return direction frame translates too *)
+  assert_payloads_match packet orig_packet;
+  (* return direction packet translates too *)
   let reverse_packet =
     Constructors.full_packet ~proto ~ttl:52 ~src:internal_client
       ~src_port:internal_client_port ~dst:nat_internal_ip ~dst_port:nat_internal_port
       ~payload:Default_values.payload
   in
-  assert_translates table Destination reverse_packet >>= fun () ->
+  assert_translates table reverse_packet >>= fun reverse_packet ->
   let orig_reverse_packet =
     Constructors.full_packet ~proto ~ttl:52 ~src:internal_client
       ~src_port:internal_client_port ~dst:nat_internal_ip ~dst_port:nat_internal_port
@@ -238,24 +237,22 @@ let test_add_redirect_valid_pkt () =
   in
   assert_payloads_match reverse_packet orig_reverse_packet;
   let open Rewriter in
-  add_redirect table orig_frame
+  add_redirect table orig_packet
     ((Ipaddr.V4 nat_internal_ip), nat_internal_port)
     ((Ipaddr.V4 internal_client), internal_client_port) >>= function
     | Overlap -> Alcotest.fail "overlap claimed for update of entry"
     | Unparseable ->
-      Printf.printf "Allegedly unparseable frame follows:\n";
-      Cstruct.hexdump frame;
+      Format.printf "Allegedly unparseable frame follows: %a@." Nat_packet.pp orig_packet;
       Alcotest.fail "add_redirect claimed that a reference packet was unparseable"
     | Ok ->
       (* attempting to add another entry which partially overlaps should fail *)
-      add_redirect table orig_frame
+      add_redirect table orig_packet
         ((Ipaddr.of_string_exn "8.8.8.8"), nat_internal_port)
         ((Ipaddr.V4 internal_client), internal_client_port) >>= function
       | Overlap -> Lwt.return_unit
       | Ok -> Alcotest.fail "overlapping entry addition allowed"
       | Unparseable ->
-        Printf.printf "Allegedly unparseable frame follows:\n";
-        Cstruct.hexdump frame;
+        Format.printf "Allegedly unparseable frame follows: %a@." Nat_packet.pp orig_packet;
         Alcotest.fail "add_redirect claimed that a reference packet was unparseable"
 
 let test_add_nat_valid_pkt () =
@@ -269,17 +266,16 @@ let test_add_nat_valid_pkt () =
   | Overlap -> Alcotest.fail "add_nat claimed overlap when inserting into an
                  empty table"
   | Unparseable ->
-    Printf.printf "Allegedly unparseable frame follows:\n";
-    Cstruct.hexdump frame;
+    Format.printf "Allegedly unparseable frame follows: %a@." Nat_packet.pp frame;
     Alcotest.fail "add_nat claimed that the first reference packet was unparseable"
   | Ok ->
     (* make sure table actually has the entries we expect *)
-    assert_translates table Source frame >>= fun () ->
+    assert_translates table frame >>= fun frame ->
     let orig_frame = Constructors.full_packet ~payload ~proto ~ttl:52 ~src ~dst ~src_port ~dst_port in
     assert_payloads_match frame orig_frame;
     let reverse_frame = Constructors.full_packet ~payload ~proto ~ttl:52 ~src:dst ~dst:xl
         ~src_port:dst_port ~dst_port:xlport in
-    assert_translates table Destination reverse_frame >>= fun () ->
+    assert_translates table reverse_frame >>= fun reverse_frame ->
     let orig_reverse_frame = Constructors.full_packet ~payload ~proto ~ttl:52 ~src:dst ~dst:xl
         ~src_port:dst_port ~dst_port:xlport in
     assert_payloads_match orig_reverse_frame reverse_frame;
@@ -288,8 +284,7 @@ let test_add_nat_valid_pkt () =
     add_nat table orig_frame ((V4 xl), xlport) >>= function
     | Overlap -> Alcotest.fail "add_nat disallowed an update"
     | Unparseable ->
-      Printf.printf "Allegedly unparseable frame follows:\n";
-      Cstruct.hexdump frame;
+      Format.printf "Allegedly unparseable frame follows: %a@." Nat_packet.pp frame;
       Alcotest.fail "add_nat claimed that a reference packet was unparseable"
     | Ok ->
       (* a half-match should fail with Overlap *)
@@ -297,12 +292,12 @@ let test_add_nat_valid_pkt () =
       add_nat table frame ((Ipaddr.V4 xl), xlport) >>= function
       | Ok -> Alcotest.fail "overlap wasn't detected"
       | Unparseable ->
-        Printf.printf "Allegedly unparseable frame follows:\n";
-        Cstruct.hexdump frame;
+        Format.printf "Allegedly unparseable frame follows: %a@." Nat_packet.pp frame;
         Alcotest.fail "add_nat claimed that a reference packet was unparseable"
       | Overlap -> Lwt.return_unit
 
 
+(*
 let test_add_nat_nonsense () =
   (* TODO: also test broadcast packets, non-tcp/udp/icmp packets *)
   let open Default_values in
@@ -317,6 +312,7 @@ let test_add_nat_nonsense () =
   | Overlap -> Alcotest.fail
                  "add_nat claimed a mangled packet was already in the table"
   | Unparseable -> Lwt.return_unit
+*)
 
 let test_add_nat_broadcast () =
   let open Default_values in
@@ -329,12 +325,11 @@ let test_add_nat_broadcast () =
   | Ok | Overlap -> Alcotest.fail "add_nat operated on a broadcast packet"
   | Unparseable ->
     (* try just an ethernet frame *)
-    let e = zero_cstruct (Cstruct.create Ethif_wire.sizeof_ethernet) in
-    empty clock >>= fun t ->
-    add_nat t e ((Ipaddr.V4 xl), xlport) >>= function
-    | Ok | Overlap ->
-      Alcotest.fail "add_nat claims to have succeeded with a bare ethernet frame"
-    | Unparseable -> Lwt.return_unit
+    let e = Cstruct.create Ethif_wire.sizeof_ethernet in
+    match Nat_packet.of_ethernet_frame e with
+    | Ok _ ->
+      Alcotest.fail "of_ethernet_frame claims to have succeeded with a bare ethernet frame"
+    | Error _ -> Lwt.return_unit
 
 type packet_variables = {
   src : Ipaddr.V4.t;
@@ -387,8 +382,8 @@ let add_many_entries how_many =
           Printf.printf "already a Destination entry for the packet; trying again\n%!";
           shove_entries n
         | Untranslated ->
-          let add_fn =
-            (* bias creation of NAT rules over redirects *)
+          (* bias creation of NAT rules over redirects *)
+          begin
             match (Random.int 10) with
             | 0 ->
               Printf.printf "adding a redirect rule\n%!";
@@ -397,8 +392,7 @@ let add_many_entries how_many =
             | _ ->
               Printf.printf "adding a NAT rule\n%!";
               Rewriter.add_nat t packet ((V4 fixed_external_ip), random_port ())
-          in
-          add_fn >>= function
+          end >>= function
           | Unparseable ->
             let print_ip ip = Printf.sprintf "%x (%s)"
                 (Int32.to_int (Ipaddr.V4.to_int32 ip))
@@ -409,7 +403,7 @@ let add_many_entries how_many =
             Printf.printf "source: %s, %x\n" (print_ip values.src) values.src_port;
             Printf.printf "destination: %s, %x\n" (print_ip values.dst) values.dst_port;
             Printf.printf "ttl: %x\n" values.ttl;
-            Cstruct.hexdump packet;
+            Format.printf "%a@." Nat_packet.pp packet;
             Alcotest.fail "Parse failure"
           | Overlap ->
             Printf.printf "overlap between entries; trying again\n%!";
@@ -428,7 +422,6 @@ let correct_mappings =
 
 let add_nat = [
   "add_nat makes entries", `Quick, lwt_run test_add_nat_valid_pkt;
-  "add_nat refuses nonsense frames", `Quick, lwt_run test_add_nat_nonsense;
   "add_nat refuses broadcast frames", `Quick, lwt_run test_add_nat_broadcast;
 ]
 

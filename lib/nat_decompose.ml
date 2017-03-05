@@ -53,61 +53,19 @@ let ports = function
     let open Udp_packet in
     Some (Mirage_nat.Udp, transport, header.src_port, header.dst_port)
 
-let rewrite_packet ~ethernet:(eth_header, eth_payload)
-                   ~network:(ip_header, ip_payload)
-                   ~transport ~src:(src, src_port) ~dst:(dst,dst_port) =
-  let finalize_ipv4 ~ip_payload ~new_ip_header ~eth_payload =
-    let header = Cstruct.sub eth_payload 0 Ipv4_wire.sizeof_ipv4 in
-    Ipv4_wire.set_ipv4_csum header 0;
-    let csum = Tcpip_checksum.ones_complement header in
-    Ipv4_wire.set_ipv4_csum header csum;
-    Logs.debug (fun f -> f "rewrote a packet.  ethernet payload now looks like this: %a" Cstruct.hexdump_pp eth_payload);
-    Result.Ok ()
-  in
-  let check_ttl ip_header =
-    match Ipv4_packet.(ip_header.ttl) with
-    | 0 -> Result.Error "TTL exceeded"
-    | n -> Result.Ok (n - 1)
-  in
-     check_ttl ip_header >>= fun ttl ->
-     let new_ip_header = { ip_header with src; dst; ttl} in
-     match transport with
-     | Icmp _ -> Result.Error "I don't rewrite ICMP packets"
-     | Udp (udp_header, udp_payload) ->
-       let pseudoheader = Ipv4_packet.Marshal.pseudoheader ~src ~dst ~proto:`UDP (Cstruct.len udp_payload + Udp_wire.sizeof_udp) in
-       let new_transport_header = { udp_header with src_port; dst_port } in
-       (* mutate the transport layer first,
-        * so we calculate the correct checksum when we
-        * mutate the network layer *)
-       Udp_packet.Marshal.into_cstruct
-         ~pseudoheader new_transport_header
-         ~payload:udp_payload ip_payload >>= fun () ->
-       Logs.debug (fun f -> f "UDP header rewritten.  ethernet payload now looks like this: %a" Cstruct.hexdump_pp eth_payload);
-       Ipv4_packet.Marshal.into_cstruct ~payload:ip_payload new_ip_header eth_payload;
-       finalize_ipv4 ~ip_payload ~new_ip_header ~eth_payload (*
-       let header = Cstruct.sub eth_payload 0 Ipv4_wire.sizeof_ipv4 in
-       Ipv4_wire.set_ipv4_csum header 0;
-       let csum = Tcpip_checksum.ones_complement header in
-       Ipv4_wire.set_ipv4_csum header csum;
-       Logs.debug (fun f -> f "IP header rewritten.  ethernet payload now looks like this: %a" Cstruct.hexdump_pp eth_payload);
-       Result.Ok () *)
-     | Tcp (tcp_header, tcp_payload) ->
-       (* TODO: unfortunately, in order to correctly figure out the pseudoheader (and thus the TCP checksum),
-        * we need to know the length field of the IPv4 header.  That means we need to know the *overall* length,
-        * which means we need to know how many bytes are required to marshal the TCP options. *)
-       let options_buf = Cstruct.create 60 in
-       let options_length = Tcp.Options.marshal options_buf tcp_header.options in
-       let pseudoheader = Ipv4_packet.Marshal.pseudoheader ~src ~dst ~proto:`TCP (Tcp.Tcp_wire.sizeof_tcp + options_length + Cstruct.len tcp_payload) in
-       let new_transport_header = { tcp_header with src_port; dst_port } in
-       Tcp.Tcp_packet.Marshal.into_cstruct
-         ~pseudoheader new_transport_header
-         ~payload:tcp_payload ip_payload >>= fun bytes ->
-       Logs.debug (fun f -> f "TCP header rewritten (%d bytes).  ethernet payload now looks like this: %a" bytes Cstruct.hexdump_pp eth_payload);
-       Ipv4_packet.Marshal.into_cstruct ~payload:ip_payload new_ip_header eth_payload;
-       finalize_ipv4 ~ip_payload ~new_ip_header ~eth_payload (*
-       let header = Cstruct.sub eth_payload 0 Ipv4_wire.sizeof_ipv4 in
-       Ipv4_wire.set_ipv4_csum header 0;
-       let csum = Tcpip_checksum.ones_complement header in
-       Ipv4_wire.set_ipv4_csum header csum;
-       Logs.debug (fun f -> f "rewrote a packet.  ethernet payload now looks like this: %a" Cstruct.hexdump_pp eth_payload);
-       Result.Ok () *)
+let rewrite_packet packet ~src:(src, src_port) ~dst:(dst,dst_port) =
+  let `IPv4 (ip_header, transport) = packet in
+  match Ipv4_packet.(ip_header.ttl) with
+  | 0 -> Error "TTL exceeded"
+  | n ->
+    let ttl = n - 1 in
+    let new_ip_header = { ip_header with src; dst; ttl} in
+    match transport with
+    | `UDP (udp_header, udp_payload) ->
+      let new_transport_header = { udp_header with Udp_packet.src_port; dst_port } in
+      Logs.debug (fun f -> f "UDP header rewritten to: %a" Udp_packet.pp new_transport_header);
+      Ok (`IPv4 (new_ip_header, `UDP (new_transport_header, udp_payload)))
+    | `TCP (tcp_header, tcp_payload) ->
+      let new_transport_header = { tcp_header with Tcp.Tcp_packet.src_port; dst_port } in
+      Logs.debug (fun f -> f "TCP header rewritten to: %a" Tcp.Tcp_packet.pp new_transport_header);
+      Ok (`IPv4 (new_ip_header, `TCP (new_transport_header, tcp_payload)))
