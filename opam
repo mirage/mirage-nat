@@ -9,7 +9,7 @@ dev-repo: "https://github.com/yomimono/mirage-nat.git"
 license: "ISC"
 
 build: [
-  ["./configure" "--prefix=%{prefix}%" "--%{arbitrary-network:enable}%-tests"]
+  ["./configure" "--prefix=%{prefix}%"]
   [make]
 ]
 build-test: [make "test"]
@@ -31,7 +31,6 @@ depends: [
   "tcpip" { >= "3.0.0" }
   "ounit" {test}
   "alcotest" {test}
-  "arbitrary-test" {test}
   "mirage-clock-unix" {test}
 ]
 depopts: [
