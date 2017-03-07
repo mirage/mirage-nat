@@ -1,14 +1,14 @@
 open Ipaddr
 open Mirage_nat
 open Test_lib
+open Lwt.Infix
 
 type direction = | Source | Destination
 
 let int_of_protocol = function
   | Udp -> 17
   | Tcp -> 6
-
-let (>>=) = Lwt.bind
+  | Icmp -> 1
 
 let ipv4_of_str = Ipaddr.V4.of_string_exn
 
@@ -47,6 +47,8 @@ let cstruct =
   end in
   (module M : Alcotest.TESTABLE with type t = M.t)
 
+let packet_t = (module Nat_packet : Alcotest.TESTABLE with type t = Nat_packet.t)
+
 module Rewriter = Mirage_nat_hashtable.Make(Mclock)(Unix_time)
 
 let clock = Lwt_main.run (Mclock.connect ())
@@ -66,6 +68,7 @@ module Constructors = struct
 
   let full_packet ~payload ~proto ~ttl ~src ~dst ~src_port ~dst_port =
     let transport = match proto with
+    | Icmp -> assert false
     | Udp -> `UDP ({Udp_packet.src_port = src_port; dst_port = dst_port}, payload)
     | Tcp -> `TCP (
         {Tcp.Tcp_packet.src_port = src_port; dst_port = dst_port;
@@ -98,8 +101,8 @@ module Constructors = struct
       add_redirect t ip_packet
           ((V4 internal_xl), internal_xl_port)
           ((V4 internal_client), internal_client_port) >>= function
-      | Ok -> Lwt.return t
-      | Overlap | Unparseable -> Alcotest.fail "Failed to insert test data into table structure"
+      | Ok () -> Lwt.return t
+      | Error _ -> Alcotest.fail "Failed to insert test data into table structure"
     in
     table () >>= fun table -> Lwt.return (ip_packet, table)
 
@@ -111,8 +114,8 @@ module Constructors = struct
       let open Rewriter in
       empty clock >>= fun t ->
       add_nat t ip_packet ((V4 xl), xlport) >>= function
-      | Ok -> Lwt.return t
-      | Overlap | Unparseable -> Alcotest.fail "Failed to insert test data into table structure"
+      | Ok () -> Lwt.return t
+      | Error _ -> Alcotest.fail "Failed to insert test data into table structure"
     in
     table () >>= fun table -> Lwt.return (ip_packet, table)
 
@@ -134,6 +137,7 @@ let assert_ipv4_has exp_src exp_dst exp_proto exp_ttl = function
     Alcotest.check Alcotest.int "ttl" exp_ttl ipv4_header.ttl
 
 let assert_transport_has exp_src_port exp_dst_port = function
+  | `IPv4 (_, `ICMP _) -> assert false
   | `IPv4 (_, `TCP (tcp, _)) ->
     let src_port, dst_port = Tcp.Tcp_packet.(tcp.src_port, tcp.dst_port) in
     Alcotest.check Alcotest.int "source port" exp_src_port src_port;
@@ -147,6 +151,7 @@ let assert_payloads_match expected actual =
   let `IPv4 (_, expected) = expected in
   let `IPv4 (_, actual) = actual in
   match expected, actual with
+  | `ICMP _, `ICMP _ -> assert false
   | `TCP (_, expected), `TCP (_, actual)
   | `UDP (_, expected), `UDP (_, actual) ->
     Alcotest.check cstruct "Payload match failure" expected actual
@@ -169,8 +174,8 @@ let assert_checksum_correct raw =
 
 let assert_translates table packet =
   Rewriter.translate table packet >>= function
-  | Untranslated -> Alcotest.fail "Expected translateable packet wasn't rewritten"
-  | Translated packet ->
+  | Error `Untranslated -> Alcotest.fail "Expected translateable packet wasn't rewritten"
+  | Ok packet ->
     Format.printf "packet translated OK: %a...@." Nat_packet.pp packet;
     let raw = Cstruct.concat @@ Nat_packet.to_cstruct packet in
     assert_checksum_correct raw;
@@ -240,20 +245,20 @@ let test_add_redirect_valid_pkt () =
   add_redirect table orig_packet
     ((Ipaddr.V4 nat_internal_ip), nat_internal_port)
     ((Ipaddr.V4 internal_client), internal_client_port) >>= function
-    | Overlap -> Alcotest.fail "overlap claimed for update of entry"
-    | Unparseable ->
-      Format.printf "Allegedly unparseable frame follows: %a@." Nat_packet.pp orig_packet;
-      Alcotest.fail "add_redirect claimed that a reference packet was unparseable"
-    | Ok ->
+    | Error `Overlap -> Alcotest.fail "overlap claimed for update of entry"
+    | Error `Cannot_NAT ->
+      Format.printf "Allegedly unNATable frame follows: %a@." Nat_packet.pp orig_packet;
+      Alcotest.fail "add_redirect claimed that a reference packet was unNATable"
+    | Ok () ->
       (* attempting to add another entry which partially overlaps should fail *)
       add_redirect table orig_packet
         ((Ipaddr.of_string_exn "8.8.8.8"), nat_internal_port)
         ((Ipaddr.V4 internal_client), internal_client_port) >>= function
-      | Overlap -> Lwt.return_unit
-      | Ok -> Alcotest.fail "overlapping entry addition allowed"
-      | Unparseable ->
-        Format.printf "Allegedly unparseable frame follows: %a@." Nat_packet.pp orig_packet;
-        Alcotest.fail "add_redirect claimed that a reference packet was unparseable"
+      | Error `Overlap -> Lwt.return_unit
+      | Ok () -> Alcotest.fail "overlapping entry addition allowed"
+      | Error `Cannot_NAT ->
+        Format.printf "Allegedly unNATable frame follows: %a@." Nat_packet.pp orig_packet;
+        Alcotest.fail "add_redirect claimed that a reference packet was unNATable"
 
 let test_add_nat_valid_pkt () =
   let open Default_values in
@@ -263,12 +268,12 @@ let test_add_nat_valid_pkt () =
   let open Rewriter in
   empty clock >>= fun table ->
   add_nat table frame ((V4 xl), xlport) >>= function
-  | Overlap -> Alcotest.fail "add_nat claimed overlap when inserting into an
+  | Error `Overlap -> Alcotest.fail "add_nat claimed overlap when inserting into an
                  empty table"
-  | Unparseable ->
-    Format.printf "Allegedly unparseable frame follows: %a@." Nat_packet.pp frame;
-    Alcotest.fail "add_nat claimed that the first reference packet was unparseable"
-  | Ok ->
+  | Error `Cannot_NAT ->
+    Format.printf "Allegedly unNATable frame follows: %a@." Nat_packet.pp frame;
+    Alcotest.fail "add_nat claimed that the first reference packet was unNATable"
+  | Ok () ->
     (* make sure table actually has the entries we expect *)
     assert_translates table frame >>= fun frame ->
     let orig_frame = Constructors.full_packet ~payload ~proto ~ttl:52 ~src ~dst ~src_port ~dst_port in
@@ -282,19 +287,19 @@ let test_add_nat_valid_pkt () =
     let open Rewriter in
     (* trying the same operation again should update the expiration time *)
     add_nat table orig_frame ((V4 xl), xlport) >>= function
-    | Overlap -> Alcotest.fail "add_nat disallowed an update"
-    | Unparseable ->
-      Format.printf "Allegedly unparseable frame follows: %a@." Nat_packet.pp frame;
-      Alcotest.fail "add_nat claimed that a reference packet was unparseable"
-    | Ok ->
+    | Error `Overlap -> Alcotest.fail "add_nat disallowed an update"
+    | Error `Cannot_NAT ->
+      Format.printf "Allegedly unNATable frame follows: %a@." Nat_packet.pp frame;
+      Alcotest.fail "add_nat claimed that a reference packet was unNATable"
+    | Ok () ->
       (* a half-match should fail with Overlap *)
       let frame = Constructors.full_packet ~payload ~proto ~ttl:52 ~src:xl ~dst ~src_port ~dst_port in
       add_nat table frame ((Ipaddr.V4 xl), xlport) >>= function
-      | Ok -> Alcotest.fail "overlap wasn't detected"
-      | Unparseable ->
-        Format.printf "Allegedly unparseable frame follows: %a@." Nat_packet.pp frame;
-        Alcotest.fail "add_nat claimed that a reference packet was unparseable"
-      | Overlap -> Lwt.return_unit
+      | Ok () -> Alcotest.fail "overlap wasn't detected"
+      | Error `Cannot_NAT ->
+        Format.printf "Allegedly unNATable frame follows: %a@." Nat_packet.pp frame;
+        Alcotest.fail "add_nat claimed that a reference packet was unNATable"
+      | Error `Overlap -> Lwt.return_unit
 
 
 (*
@@ -322,8 +327,8 @@ let test_add_nat_broadcast () =
   let open Rewriter in
   empty clock >>= fun t ->
   add_nat t broadcast ((Ipaddr.V4 xl), xlport) >>= function
-  | Ok | Overlap -> Alcotest.fail "add_nat operated on a broadcast packet"
-  | Unparseable ->
+  | Ok () | Error `Overlap -> Alcotest.fail "add_nat operated on a broadcast packet"
+  | Error `Cannot_NAT ->
     (* try just an ethernet frame *)
     let e = Cstruct.create Ethif_wire.sizeof_ethernet in
     match Nat_packet.of_ethernet_frame e with
@@ -373,15 +378,15 @@ let add_many_entries how_many =
       Printf.printf "%d more entries...\n%!" n;
       let (packet, values) = random_packet () in
       translate t packet >>= function
-      | Translated _ ->
+      | Ok _ ->
         Printf.printf "already a Source entry for the packet; trying again\n%!";
         shove_entries n (* generated an overlap; try again *)
-      | Untranslated ->
+      | Error `Untranslated ->
         translate t packet >>= function
-        | Translated _ ->
+        | Ok _ ->
           Printf.printf "already a Destination entry for the packet; trying again\n%!";
           shove_entries n
-        | Untranslated ->
+        | Error `Untranslated ->
           (* bias creation of NAT rules over redirects *)
           begin
             match (Random.int 10) with
@@ -393,7 +398,7 @@ let add_many_entries how_many =
               Printf.printf "adding a NAT rule\n%!";
               Rewriter.add_nat t packet ((V4 fixed_external_ip), random_port ())
           end >>= function
-          | Unparseable ->
+          | Error `Cannot_NAT ->
             let print_ip ip = Printf.sprintf "%x (%s)"
                 (Int32.to_int (Ipaddr.V4.to_int32 ip))
                 (Ipaddr.V4.to_string ip) in
@@ -405,12 +410,51 @@ let add_many_entries how_many =
             Printf.printf "ttl: %x\n" values.ttl;
             Format.printf "%a@." Nat_packet.pp packet;
             Alcotest.fail "Parse failure"
-          | Overlap ->
+          | Error `Overlap ->
             Printf.printf "overlap between entries; trying again\n%!";
             shove_entries n
-          | Ok -> shove_entries (n-1)
+          | Ok () -> shove_entries (n-1)
   in
   shove_entries how_many
+
+let make_icmp ~src ~dst ~payload ~ttl icmp =
+  let src = Ipaddr.V4.of_string_exn src in
+  let dst = Ipaddr.V4.of_string_exn dst in
+  let proto = Ipv4_packet.Marshal.protocol_to_int `ICMP in
+  let icmp =
+    match icmp with
+    | `Echo_request (id, seq) -> {
+        Icmpv4_packet.ty = Icmpv4_wire.Echo_request;
+        code = 0;
+        subheader = Icmpv4_packet.Id_and_seq (id, seq)
+      } 
+    | `Echo_reply (id, seq) -> {
+        Icmpv4_packet.ty = Icmpv4_wire.Echo_reply;
+        code = 0;
+        subheader = Icmpv4_packet.Id_and_seq (id, seq)
+      } 
+  in
+  let ip = {Ipv4_packet.src; dst; ttl; options = Cstruct.create 0; proto} in
+  `IPv4 (ip, `ICMP (icmp, payload))
+
+let test_add_icmp () =
+  Rewriter.empty clock >>= fun t ->
+  let payload = Cstruct.create 0 in
+  let packet = make_icmp ~src:"192.168.1.5" ~dst:"8.8.8.8" ~payload (`Echo_request (5, 9)) ~ttl:64 in
+  let endpoint = Ipaddr.of_string_exn "82.1.1.8", 81 in
+  (* Add rule *)
+  Rewriter.add_nat t packet endpoint
+  >|= Alcotest.(check (result unit (of_pp Mirage_nat.pp_error))) "Add ICMP rule" (Ok ()) >>= fun () ->
+  (* Translate outgoing request *)
+  let expected = make_icmp ~src:"82.1.1.8" ~dst:"8.8.8.8" ~payload (`Echo_request (81, 9)) ~ttl:63 in
+  Rewriter.translate t packet
+  >|= Alcotest.(check (result packet_t (of_pp Mirage_nat.pp_error))) "Apply ICMP rule" (Ok expected) >>= fun () ->
+  (* Translate reply *)
+  let packet = make_icmp ~dst:"82.1.1.8" ~src:"8.8.8.8" ~payload (`Echo_reply (81, 9)) ~ttl:64 in
+  let expected = make_icmp ~dst:"192.168.1.5" ~src:"8.8.8.8" ~payload (`Echo_reply (5, 9)) ~ttl:63 in
+  Rewriter.translate t packet
+  >|= Alcotest.(check (result packet_t (of_pp Mirage_nat.pp_error))) "Map ICMP reply" (Ok expected) >>= fun () ->
+  Lwt.return ()
 
 let lwt_run f () = Lwt_main.run (f ())
 
@@ -421,8 +465,9 @@ let correct_mappings =
   ]
 
 let add_nat = [
-  "add_nat makes entries", `Quick, lwt_run test_add_nat_valid_pkt;
+  "add_nat makes entries",            `Quick, lwt_run test_add_nat_valid_pkt;
   "add_nat refuses broadcast frames", `Quick, lwt_run test_add_nat_broadcast;
+  "add_nat for ICMP",                 `Quick, lwt_run test_add_icmp;
 ]
 
 let add_redirect = [

@@ -53,6 +53,13 @@ let ports = function
     let open Udp_packet in
     Some (Mirage_nat.Udp, transport, header.src_port, header.dst_port)
 
+let rewrite_icmp ~src_port ~dst_port icmp =
+  match icmp.Icmpv4_packet.subheader with
+  | Icmpv4_packet.Id_and_seq (_, seq) ->
+    Ok {icmp with Icmpv4_packet.subheader = Icmpv4_packet.Id_and_seq (src_port, seq)}
+  | _ ->
+    Error "Unsupported ICMP packet"
+
 let rewrite_packet packet ~src:(src, src_port) ~dst:(dst,dst_port) =
   let `IPv4 (ip_header, transport) = packet in
   match Ipv4_packet.(ip_header.ttl) with
@@ -61,6 +68,13 @@ let rewrite_packet packet ~src:(src, src_port) ~dst:(dst,dst_port) =
     let ttl = n - 1 in
     let new_ip_header = { ip_header with src; dst; ttl} in
     match transport with
+    | `ICMP (icmp_header, payload) ->
+      begin match rewrite_icmp ~src_port ~dst_port icmp_header with
+        | Error _ as e -> e
+        | Ok new_icmp ->
+          Logs.debug (fun f -> f "ICMP header rewritten to: %a" Icmpv4_packet.pp new_icmp);
+          Ok (`IPv4 (new_ip_header, `ICMP (new_icmp, payload)))
+      end
     | `UDP (udp_header, udp_payload) ->
       let new_transport_header = { udp_header with Udp_packet.src_port; dst_port } in
       Logs.debug (fun f -> f "UDP header rewritten to: %a" Udp_packet.pp new_transport_header);

@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 1c8e16a2566f4d7d662e58475a2d07e1)
+# DO NOT EDIT (digest: 6b5d4da91c448097365a7715c0a25810)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -51,32 +51,6 @@ true: annot, bin_annot
 <lib/hashtable/*.ml{,i,y}>: pkg_tcpip.tcp
 <lib/hashtable/*.ml{,i,y}>: pkg_tcpip.udp
 <lib/hashtable/*.ml{,i,y}>: use_mirage-nat
-# Executable randomized_tests
-"lib_test/test_randomized.byte": oasis_executable_randomized_tests_byte
-<lib_test/*.ml{,i,y}>: oasis_executable_randomized_tests_byte
-"lib_test/test_randomized.byte": pkg_alcotest
-"lib_test/test_randomized.byte": pkg_arbitrary-network
-"lib_test/test_randomized.byte": pkg_cstruct
-"lib_test/test_randomized.byte": pkg_ipaddr
-"lib_test/test_randomized.byte": pkg_logs
-"lib_test/test_randomized.byte": pkg_lwt
-"lib_test/test_randomized.byte": pkg_mirage-clock
-"lib_test/test_randomized.byte": pkg_mirage-profile
-"lib_test/test_randomized.byte": pkg_mirage-time
-"lib_test/test_randomized.byte": pkg_oUnit
-"lib_test/test_randomized.byte": pkg_quickcheck
-"lib_test/test_randomized.byte": pkg_rresult
-"lib_test/test_randomized.byte": pkg_tcpip
-"lib_test/test_randomized.byte": pkg_tcpip.arpv4
-"lib_test/test_randomized.byte": pkg_tcpip.ethif
-"lib_test/test_randomized.byte": pkg_tcpip.icmpv4
-"lib_test/test_randomized.byte": pkg_tcpip.ipv4
-"lib_test/test_randomized.byte": pkg_tcpip.ipv6
-"lib_test/test_randomized.byte": pkg_tcpip.tcp
-"lib_test/test_randomized.byte": pkg_tcpip.udp
-"lib_test/test_randomized.byte": use_mirage-nat
-<lib_test/*.ml{,i,y}>: pkg_arbitrary-network
-<lib_test/*.ml{,i,y}>: pkg_quickcheck
 # Executable test_rewrite
 "lib_test/test_rewrite.byte": oasis_executable_test_rewrite_byte
 <lib_test/*.ml{,i,y}>: oasis_executable_test_rewrite_byte

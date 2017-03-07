@@ -3,7 +3,8 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 type t =
   [`IPv4 of Ipv4_packet.t * [ `TCP of Tcp.Tcp_packet.t * Cstruct.t
-                            | `UDP of Udp_packet.t * Cstruct.t ]
+                            | `UDP of Udp_packet.t * Cstruct.t
+                            | `ICMP of Icmpv4_packet.t * Cstruct.t ]
   ]
 
 type error = Format.formatter -> unit
@@ -18,6 +19,10 @@ let equal_udp (ah, ap) (bh, bp) =
   Udp_packet.equal ah bh &&
   Cstruct.equal ap bp
 
+let equal_icmp (ah, ap) (bh, bp) =
+  Icmpv4_packet.equal ah bh &&
+  Cstruct.equal ap bp
+
 let equal a b =
   match a, b with
   | `IPv4 (ai, at), `IPv4 (bi, bt) ->
@@ -25,6 +30,7 @@ let equal a b =
       match at, bt with
       | `TCP a, `TCP b -> equal_tcp a b
       | `UDP a, `UDP b -> equal_udp a b
+      | `ICMP a, `ICMP b -> equal_icmp a b
       | _ -> false
     )
 
@@ -45,6 +51,12 @@ let of_ipv4_packet packet : (t, error) result =
         | Error e ->
           Error (fun f -> Fmt.pf f "Failed to parse UDP packet: %s@.%a" e Cstruct.hexdump_pp transport)
         | Ok (udp, payload) -> Ok (`IPv4 (ip, `UDP (udp, payload)))
+      end
+    | Some `ICMP ->
+      begin match Icmpv4_packet.Unmarshal.of_cstruct transport with
+        | Error e ->
+          Error (fun f -> Fmt.pf f "Failed to parse ICMP packet: %s@.%a" e Cstruct.hexdump_pp transport)
+        | Ok (header, payload) -> Ok (`IPv4 (ip, `ICMP (header, payload)))
       end
     | _ ->
       Error (fun f -> Fmt.pf f "Ignoring non-TCP/UDP packet: %a" Ipv4_packet.pp ip)
@@ -69,7 +81,8 @@ let to_cstruct (`IPv4 (ip, transport)) =
   (* Calculate required buffer size *)
   let transport_header_len =
     match transport with
-    | `UDP (udp_header, _) -> Udp_wire.sizeof_udp
+    | `ICMP _ -> Icmpv4_wire.sizeof_icmpv4
+    | `UDP _ -> Udp_wire.sizeof_udp
     | `TCP (tcp_header, _) ->
       (* TODO: unfortunately, in order to correctly figure out the pseudoheader (and thus the TCP checksum),
        * we need to know the length field of the IPv4 header.  That means we need to know the *overall* length,
@@ -83,6 +96,10 @@ let to_cstruct (`IPv4 (ip, transport)) =
      write the IP layer. *)
   let transport =
     match transport with
+    | `ICMP (icmp_header, icmp_payload) ->
+      let transport_header = Icmpv4_packet.Marshal.make_cstruct icmp_header ~payload:icmp_payload in
+      Logs.debug (fun f -> f "ICMP header written: %a" Cstruct.hexdump_pp transport_header);
+      [transport_header; icmp_payload]
     | `UDP (udp_header, udp_payload) ->
       let pseudoheader = Ipv4_packet.Marshal.pseudoheader ~src ~dst ~proto:`UDP (Cstruct.len udp_payload + Udp_wire.sizeof_udp) in
       let transport_header = Udp_packet.Marshal.make_cstruct
@@ -105,6 +122,10 @@ let to_cstruct (`IPv4 (ip, transport)) =
   ip_header :: transport
 
 let pp_transport f = function
+  | `ICMP (icmp, payload) ->
+    Fmt.pf f "%a with payload %a"
+      Icmpv4_packet.pp icmp
+      Cstruct.hexdump_pp payload
   | `TCP (tcp, payload) ->
     Fmt.pf f "%a with payload %a"
       Tcp.Tcp_packet.pp tcp

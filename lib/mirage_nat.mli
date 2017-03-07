@@ -1,6 +1,7 @@
 type protocol =
   | Udp
   | Tcp
+  | Icmp
 
 type port = Cstruct.uint16
 type endpoint = (Ipaddr.t * port)
@@ -17,11 +18,15 @@ type mode =
   | Redirect
   | Nat
 
-type translate_result =
-  | Translated of Nat_packet.t
-  | Untranslated
-
 type time = int64
+
+type error = [
+  | `Overlap      (* There is already a translation using this slot. *)
+  | `Cannot_NAT   (* It is not possible to make this translation for this type of packet. *)
+  | `Untranslated (* There was no matching entry in the NAT table. *)
+]
+
+val pp_error : [< error] Fmt.t
 
 module type CLOCK = Mirage_clock_lwt.MCLOCK
 
@@ -31,11 +36,6 @@ module type S = sig
   type t
   type config
 
-  type insert_result =
-    | Ok
-    | Overlap
-    | Unparseable
-
   val empty : config -> t Lwt.t
 
   (** given a lookup table and an ip-level frame,
@@ -43,7 +43,7 @@ module type S = sig
     * on the Cstruct.t .  If the packet should be forwarded, return Some packet,
     * else return None.
     * This function is zero-copy and mutates values in the given Cstruct.  *)
-  val translate : t -> Nat_packet.t -> translate_result Lwt.t
+  val translate : t -> Nat_packet.t -> (Nat_packet.t, [> `Untranslated]) result Lwt.t
 
   (** given a table, a frame, and a translation IP and port,
     * put relevant entries for the (src_ip, src_port), (dst_ip, dst_port) from the
@@ -55,7 +55,7 @@ module type S = sig
          (dst_ip, dst_port), (src_ip, src_port)).
     * if insertion succeeded, return the new table;
     * otherwise, return an error type indicating the problem. *)
-  val add_nat : t -> Nat_packet.t -> endpoint -> insert_result Lwt.t
+  val add_nat : t -> Nat_packet.t -> endpoint -> (unit, [> `Overlap | `Cannot_NAT]) result Lwt.t
 
   (** given a table, a frame from which (src_ip, src_port) and (xl_left_ip,
       xl_left_port) can be extracted (these are source and destination for the
@@ -68,7 +68,7 @@ module type S = sig
       ((xl_ip, xl_right_port), (dst_ip, dst_port)) to (src_ip, src_port).
     * if insertion succeeded, return the new table;
     * otherwise, return an error type indicating the problem. *)
-  val add_redirect : t -> Nat_packet.t -> endpoint -> endpoint -> insert_result Lwt.t
+  val add_redirect : t -> Nat_packet.t -> endpoint -> endpoint -> (unit, [> `Overlap | `Cannot_NAT]) result Lwt.t
 end
 
 module type Lookup = sig
