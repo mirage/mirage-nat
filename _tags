@@ -103,3 +103,4 @@ true: annot, bin_annot
 <lib_test/*.ml{,i,y}>: use_mirage-nat
 <lib_test/*.ml{,i,y}>: use_mirage-nat-hashtable
 # OASIS_STOP
+true: warn(A-4), strict_sequence

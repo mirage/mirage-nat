@@ -23,7 +23,7 @@ let mapping =
       let pair_equal (l_ip, (l_port : int)) (r_ip, r_port) =
         match Ipaddr.compare l_ip r_ip with
         | 0 -> Pervasives.compare l_port r_port = 0
-        | n -> false
+        | _ -> false
       in
       match pair_equal (fst l) (fst r) with
       | false -> false
@@ -129,7 +129,7 @@ let check_entry expected (actual : ((Ipaddr.t * int) * (Ipaddr.t * int)) option)
 (* given a source IP, destination IP, protocol, and TTL,
    check to see whether an IPv4 packet has those fields set. *)
 let assert_ipv4_has exp_src exp_dst exp_proto exp_ttl = function
-  | `IPv4 (ipv4_header, ipv4_payload) ->
+  | `IPv4 (ipv4_header, _ipv4_payload) ->
     let open Ipv4_packet in
     Alcotest.check ip "ip src" exp_src ipv4_header.src;
     Alcotest.check ip "ip dst" exp_dst ipv4_header.dst;
@@ -268,8 +268,7 @@ let test_add_nat_valid_pkt () =
   let open Rewriter in
   empty clock >>= fun table ->
   add_nat table frame ((V4 xl), xlport) >>= function
-  | Error `Overlap -> Alcotest.fail "add_nat claimed overlap when inserting into an
-                 empty table"
+  | Error `Overlap -> Alcotest.fail "add_nat claimed overlap when inserting into an empty table"
   | Error `Cannot_NAT ->
     Format.printf "Allegedly unNATable frame follows: %a@." Nat_packet.pp frame;
     Alcotest.fail "add_nat claimed that the first reference packet was unNATable"
@@ -284,7 +283,6 @@ let test_add_nat_valid_pkt () =
     let orig_reverse_frame = Constructors.full_packet ~payload ~proto ~ttl:52 ~src:dst ~dst:xl
         ~src_port:dst_port ~dst_port:xlport in
     assert_payloads_match orig_reverse_frame reverse_frame;
-    let open Rewriter in
     (* trying the same operation again should update the expiration time *)
     add_nat table orig_frame ((V4 xl), xlport) >>= function
     | Error `Overlap -> Alcotest.fail "add_nat disallowed an update"
@@ -402,9 +400,9 @@ let add_many_entries how_many =
             let print_ip ip = Printf.sprintf "%x (%s)"
                 (Int32.to_int (Ipaddr.V4.to_int32 ip))
                 (Ipaddr.V4.to_string ip) in
-            Printf.printf "With %d entries yet to go,
-            Failure parsing this packet, which was automatically generated from
-            the following values:\n" n;
+            Printf.printf "With %d entries yet to go, \
+                           Failure parsing this packet, which was automatically generated from \
+                           the following values:\n" n;
             Printf.printf "source: %s, %x\n" (print_ip values.src) values.src_port;
             Printf.printf "destination: %s, %x\n" (print_ip values.dst) values.dst_port;
             Printf.printf "ttl: %x\n" values.ttl;

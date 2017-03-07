@@ -78,7 +78,7 @@ module type Lookup = sig
   val lookup : t -> protocol -> source:endpoint -> destination:endpoint ->
     (int64 * mapping) option Lwt.t
 
-  val insert : t -> time -> protocol -> translation -> t option Lwt.t
+  val insert : t -> time -> protocol -> translation -> (unit, [> `Overlap]) result Lwt.t
 
   val delete : t -> protocol ->
     internal_lookup:mapping ->

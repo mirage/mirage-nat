@@ -34,7 +34,7 @@ end = struct
     | Some (sport, dport) -> 
       let (>>=) = Lwt.bind in
       (* got everything; do the lookup *)
-      N.lookup table proto ((V4 ip.Ipv4_packet.src), sport) ((V4 ip.Ipv4_packet.dst), dport) >>= function
+      N.lookup table proto ~source:((V4 ip.Ipv4_packet.src), sport) ~destination:((V4 ip.Ipv4_packet.dst), dport) >>= function
       | Some (_expiry, ((V4 new_src, new_sport), (V4 new_dst, new_dport))) ->
         (* TODO: we should probably refuse to pass TTL = 0 and instead send an
             ICMP message back to the sender *)
@@ -56,13 +56,12 @@ end = struct
       | _ -> false
     in
     let (src, dst) = Ipv4_packet.(V4 ip_header.src, V4 ip_header.dst) in
-    let (>>=) = Lwt.bind in
     match check_scope src, check_scope dst with
     | false, _ | _, false -> Lwt.return (Error `Cannot_NAT)
     | true, true ->
       match transport with
       | `ICMP _ when mode = Redirect -> Lwt.return (Error (`Cannot_NAT))
-      | `ICMP (icmp, payload) ->
+      | `ICMP _ ->
         begin
           match ports_of_ip transport with
           | None -> Lwt.return (Error `Cannot_NAT)
@@ -78,9 +77,7 @@ end = struct
             (* RFC 5508: An ICMP Query session timer MUST NOT expire in less than 60 seconds *)
             let expiration_window = 120L in
             let proto = Icmp in
-            N.insert table expiration_window proto entries >>= function
-            | Some t -> Lwt.return (Ok ())
-            | None -> Lwt.return (Error `Overlap)
+            N.insert table expiration_window proto entries
         end
     | `TCP _ | `UDP _ as transport ->
       match ports_of_ip transport with
@@ -110,9 +107,7 @@ end = struct
           | `TCP _ -> Tcp
           | `UDP _ -> Udp
         in
-        N.insert table expiration_window proto entries >>= function
-        | Some t -> Lwt.return (Ok ())
-        | None -> Lwt.return (Error `Overlap)
+        N.insert table expiration_window proto entries
 
   let add_redirect table packet
       (other_xl_ip, other_xl_port)

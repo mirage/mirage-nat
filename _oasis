@@ -12,7 +12,7 @@ Description: rewrite packets to support translation between external and interna
 
 Library "mirage-nat"
   Path: lib
-  Modules: Mirage_nat, Nat_shims, Nat_packet
+  Modules: Mirage_nat, Nat_packet
   InternalModules: Nat_rewrite, Nat_translations, Nat_decompose
   BuildDepends: ipaddr, tcpip, tcpip.ethif, tcpip.arpv4, tcpip.ipv4, tcpip.ipv6, tcpip.icmpv4, tcpip.udp, tcpip.tcp, cstruct, lwt, mirage-profile, rresult, logs, mirage-time, mirage-clock
 

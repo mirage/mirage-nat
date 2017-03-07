@@ -8,8 +8,6 @@
 *)
 open Mirage_nat
 
-let (>>=) = Lwt.bind
-
 module Storage(Clock : Mirage_clock_lwt.MCLOCK)(Time: TIME) : sig
   include Mirage_nat.Lookup with type config = Clock.t
 end = struct
@@ -20,17 +18,6 @@ end = struct
   }
 
   type config = Clock.t
-
-  let rec tick t () =
-    MProf.Trace.label "Mirage_nat.tick";
-    let expiry_check_interval = Duration.of_sec 6 in
-    let now = Clock.elapsed_ns t.clock in
-    Hashtbl.iter (fun key (expiry, _) ->
-        match Int64.compare expiry now with
-        | n when n < 0 -> Hashtbl.remove t.store key
-        | _ -> ()
-      ) t.store;
-    Time.sleep_ns expiry_check_interval >>= tick t
 
   let empty clock =
     (* initial size is completely arbitrary *)
@@ -60,8 +47,8 @@ end = struct
       let expiration = Int64.add (Clock.elapsed_ns t.clock) expiry_interval in
       Hashtbl.add t.store (proto, mappings.internal_lookup) (expiration, mappings.internal_mapping);
       Hashtbl.add t.store (proto, mappings.external_lookup) (expiration, mappings.external_mapping);
-      Lwt.return (Some t)
-    | _, _ -> Lwt.return None
+      Lwt.return (Ok ())
+    | _, _ -> Lwt.return (Error `Overlap)
 
   let delete t proto ~internal_lookup ~external_lookup =
     Hashtbl.remove t.store (proto, internal_lookup);

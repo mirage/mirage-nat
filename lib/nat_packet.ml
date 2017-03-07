@@ -1,6 +1,3 @@
-let src = Logs.Src.create "nat-packet" ~doc:"Mirage NAT packet parser"
-module Log = (val Logs.src_log src : Logs.LOG)
-
 type t =
   [`IPv4 of Ipv4_packet.t * [ `TCP of Tcp.Tcp_packet.t * Cstruct.t
                             | `UDP of Udp_packet.t * Cstruct.t
@@ -71,13 +68,8 @@ let of_ethernet_frame frame =
       Error (fun f -> Fmt.pf f "Ignoring a non-IPv4 frame: %a" Cstruct.hexdump_pp frame)
     | Ethif_wire.IPv4 -> of_ipv4_packet packet
 
-let (>>*=) x f =
-  match x with
-  | Ok x -> f x
-  | Error e -> failwith e
-
 let to_cstruct (`IPv4 (ip, transport)) =
-  let {Ipv4_packet.src; dst} = ip in
+  let {Ipv4_packet.src; dst; _} = ip in
   (* Calculate required buffer size *)
   let transport_header_len =
     match transport with
