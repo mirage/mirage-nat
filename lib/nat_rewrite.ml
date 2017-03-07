@@ -1,17 +1,14 @@
 open Ipaddr
 open Mirage_nat
 
-module Make(Nat_table : Mirage_nat.Lookup) : sig
-  include Mirage_nat.S with type config = Nat_table.config
-end = struct
+module Make(Nat_table : Mirage_nat.Lookup) = struct
   let src = Logs.Src.create "nat-rewrite" ~doc:"Mirage NAT packet rewriter"
   module Log = (val Logs.src_log src : Logs.LOG)
 
   module N = Nat_table
   type t = N.t
-  type config = Nat_table.config
 
-  let empty (config : N.config) = N.empty config
+  let reset = N.reset
 
   let ports_of_ip = function
     | `TCP (x, _) -> Some Tcp.Tcp_packet.(x.src_port, x.dst_port)

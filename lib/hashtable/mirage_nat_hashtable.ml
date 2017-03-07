@@ -8,16 +8,16 @@
 *)
 open Mirage_nat
 
-module Storage(Clock : Mirage_clock_lwt.MCLOCK)(Time: TIME) : sig
-  include Mirage_nat.Lookup with type config = Clock.t
-end = struct
+module Storage(Clock : Mirage_clock_lwt.MCLOCK)(Time: TIME) = struct
 
   type t = {
     store: ((protocol * mapping), (int64 * mapping)) Hashtbl.t;
     clock: Clock.t;
   }
 
-  type config = Clock.t
+  let reset t =
+    Hashtbl.reset t.store;
+    Lwt.return_unit
 
   let empty clock =
     (* initial size is completely arbitrary *)
@@ -53,11 +53,14 @@ end = struct
   let delete t proto ~internal_lookup ~external_lookup =
     Hashtbl.remove t.store (proto, internal_lookup);
     Hashtbl.remove t.store (proto, external_lookup);
-    Lwt.return t
+    Lwt.return_unit
 
 end
 
 module Make(Clock: CLOCK) (Time: TIME) = struct
   module Table = Storage(Clock)(Time)
   include Nat_rewrite.Make(Table)
+
+  let empty = Table.empty
+  let reset = Table.reset
 end
