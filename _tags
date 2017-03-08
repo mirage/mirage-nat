@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 6b5d4da91c448097365a7715c0a25810)
+# DO NOT EDIT (digest: 031d9c05d0f84444a31dccbcad37fb43)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -23,6 +23,7 @@ true: annot, bin_annot
 <lib/*.ml{,i,y}>: pkg_mirage-clock
 <lib/*.ml{,i,y}>: pkg_mirage-profile
 <lib/*.ml{,i,y}>: pkg_mirage-time
+<lib/*.ml{,i,y}>: pkg_ppx_deriving.eq
 <lib/*.ml{,i,y}>: pkg_rresult
 <lib/*.ml{,i,y}>: pkg_tcpip
 <lib/*.ml{,i,y}>: pkg_tcpip.arpv4
@@ -41,6 +42,7 @@ true: annot, bin_annot
 <lib/hashtable/*.ml{,i,y}>: pkg_mirage-clock
 <lib/hashtable/*.ml{,i,y}>: pkg_mirage-profile
 <lib/hashtable/*.ml{,i,y}>: pkg_mirage-time
+<lib/hashtable/*.ml{,i,y}>: pkg_ppx_deriving.eq
 <lib/hashtable/*.ml{,i,y}>: pkg_rresult
 <lib/hashtable/*.ml{,i,y}>: pkg_tcpip
 <lib/hashtable/*.ml{,i,y}>: pkg_tcpip.arpv4
@@ -67,6 +69,7 @@ true: annot, bin_annot
 "lib_test/test_rewrite.byte": pkg_mirage-profile
 "lib_test/test_rewrite.byte": pkg_mirage-time
 "lib_test/test_rewrite.byte": pkg_oUnit
+"lib_test/test_rewrite.byte": pkg_ppx_deriving.eq
 "lib_test/test_rewrite.byte": pkg_rresult
 "lib_test/test_rewrite.byte": pkg_tcpip
 "lib_test/test_rewrite.byte": pkg_tcpip.arpv4
@@ -91,6 +94,7 @@ true: annot, bin_annot
 <lib_test/*.ml{,i,y}>: pkg_mirage-profile
 <lib_test/*.ml{,i,y}>: pkg_mirage-time
 <lib_test/*.ml{,i,y}>: pkg_oUnit
+<lib_test/*.ml{,i,y}>: pkg_ppx_deriving.eq
 <lib_test/*.ml{,i,y}>: pkg_rresult
 <lib_test/*.ml{,i,y}>: pkg_tcpip
 <lib_test/*.ml{,i,y}>: pkg_tcpip.arpv4

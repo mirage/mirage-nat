@@ -3,12 +3,12 @@ let rewrite_icmp ~src_port icmp =
   | Icmpv4_packet.Id_and_seq (_, seq) ->
     Ok {icmp with Icmpv4_packet.subheader = Icmpv4_packet.Id_and_seq (src_port, seq)}
   | _ ->
-    Error "Unsupported ICMP packet"
+    Error `Untranslated
 
 let rewrite_packet packet ~src:(src, src_port) ~dst:(dst,dst_port) =
   let `IPv4 (ip_header, transport) = packet in
   match Ipv4_packet.(ip_header.ttl) with
-  | 0 -> Error "TTL exceeded"
+  | 0 -> Error `TTL_exceeded
   | n ->
     let ttl = n - 1 in
     let new_ip_header = { ip_header with Ipv4_packet.src; dst; ttl} in

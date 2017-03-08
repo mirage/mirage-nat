@@ -14,7 +14,7 @@ Library "mirage-nat"
   Path: lib
   Modules: Mirage_nat, Nat_packet
   InternalModules: Nat_rewrite, Nat_translations, Nat_decompose
-  BuildDepends: ipaddr, tcpip, tcpip.ethif, tcpip.arpv4, tcpip.ipv4, tcpip.ipv6, tcpip.icmpv4, tcpip.udp, tcpip.tcp, cstruct, lwt, mirage-profile, rresult, logs, mirage-time, mirage-clock
+  BuildDepends: ipaddr, tcpip, tcpip.ethif, tcpip.arpv4, tcpip.ipv4, tcpip.ipv6, tcpip.icmpv4, tcpip.udp, tcpip.tcp, cstruct, lwt, mirage-profile, rresult, logs, mirage-time, mirage-clock, ppx_deriving.eq
 
 Library "mirage-nat-hashtable"
   Path: lib/hashtable

@@ -1,7 +1,14 @@
+type icmp = [
+  | `Query of Cstruct.t
+  | `Error of Ipv4_packet.t * Cstruct.t * int (* Payload length *)
+]
+[@@deriving eq]
+
 type t =
   [`IPv4 of Ipv4_packet.t * [ `TCP of Tcp.Tcp_packet.t * Cstruct.t
                             | `UDP of Udp_packet.t * Cstruct.t
-                            | `ICMP of Icmpv4_packet.t * Cstruct.t ]
+                            | `ICMP of Icmpv4_packet.t * icmp
+                            ]
   ]
 
 type error

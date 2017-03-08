@@ -2,4 +2,4 @@
 val rewrite_packet :
   Nat_packet.t ->
   src:(Ipaddr.V4.t * Mirage_nat.port) -> dst:(Ipaddr.V4.t * Mirage_nat.port) ->
-  (Nat_packet.t, string) Result.result
+  (Nat_packet.t, [> `TTL_exceeded | `Untranslated]) Result.result

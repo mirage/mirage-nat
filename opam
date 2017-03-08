@@ -28,6 +28,7 @@ depends: [
   "lwt"
   "rresult"
   "logs"
+  "ppx_deriving" {build}
   "tcpip" { >= "3.0.0" }
   "ounit" {test}
   "alcotest" {test}

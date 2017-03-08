@@ -24,6 +24,7 @@ type error = [
   | `Overlap      (* There is already a translation using this slot. *)
   | `Cannot_NAT   (* It is not possible to make this translation for this type of packet. *)
   | `Untranslated (* There was no matching entry in the NAT table. *)
+  | `TTL_exceeded (* The packet's time-to-live has run out *)
 ]
 
 val pp_error : [< error] Fmt.t
@@ -35,7 +36,7 @@ module type TIME = Mirage_time_lwt.S
 module type S = sig
   type t
 
-  val translate : t -> Nat_packet.t -> (Nat_packet.t, [> `Untranslated]) result Lwt.t
+  val translate : t -> Nat_packet.t -> (Nat_packet.t, [> `Untranslated | `TTL_exceeded]) result Lwt.t
   (** Given a lookup table and an ip-level packet,
     * perform any translation indicated by presence in the table.
     * If the packet should be forwarded, return the translated packet,
