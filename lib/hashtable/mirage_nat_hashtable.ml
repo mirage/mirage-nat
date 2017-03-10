@@ -27,7 +27,7 @@ module Storage = struct
 
     (* cases that should result in a valid mapping:
        neither side is already mapped *)
-    let insert t expiration mappings =
+    let insert t ~expiry mappings =
       MProf.Trace.label "Mirage_nat_hashtable.insert";
       let t = L.table t in
       match mappings with
@@ -37,7 +37,7 @@ module Storage = struct
         let first_known = known m in
         if List.exists (fun x -> known x <> first_known) ms then Lwt.return (Error `Overlap)
         else (
-          List.iter (fun (a, b) -> Hashtbl.add t a (expiration, b)) mappings;
+          List.iter (fun (a, b) -> Hashtbl.add t a (expiry, b)) mappings;
           Lwt.return (Ok ())
         )
 

@@ -67,7 +67,7 @@ module Constructors = struct
  
   let make_table_with_redirect ip_packet ~internal_xl ~internal_xl_port ~internal_client ~internal_client_port =
     Rewriter.empty () >>= fun t ->
-    Rewriter.add t ip_packet
+    Rewriter.add t ~now:0L ip_packet
       ((V4 internal_xl), internal_xl_port)
       (`Redirect ((V4 internal_client), internal_client_port))
     >>= function
@@ -76,7 +76,7 @@ module Constructors = struct
 
   let make_table_with_nat ip_packet ~xl ~xlport =
     Rewriter.empty () >>= fun t ->
-    Rewriter.add t ip_packet ((V4 xl), xlport) `NAT >|= function
+    Rewriter.add t ~now:0L ip_packet ((V4 xl), xlport) `NAT >|= function
     | Error e ->
       Alcotest.fail (Fmt.strf "Failed to insert test data into table structure: %a" Mirage_nat.pp_error e)
     | Ok () -> t
@@ -166,12 +166,12 @@ let test_add_redirect_valid_pkt () =
   Rewriter.translate table reverse_packet >|=
   Alcotest.check translate_result "Redirect reply" (Ok expected_packet) >>= fun () ->
   (* check errors *)
-  Rewriter.add table packet
+  Rewriter.add ~now:0L table packet
     ((Ipaddr.V4 nat_internal_ip), nat_internal_port)
     (`Redirect ((Ipaddr.V4 internal_client), internal_client_port)) >|=
   Alcotest.check add_result "First redirect OK" (Ok ()) >>= fun () ->
   (* attempting to add another entry which partially overlaps should fail *)
-  Rewriter.add table packet
+  Rewriter.add ~now:0L table packet
     ((Ipaddr.of_string_exn "8.8.8.8"), nat_internal_port)
     (`Redirect ((Ipaddr.V4 internal_client), internal_client_port)) >|=
   Alcotest.check add_result "Overlapping redirect" (Error `Overlap)
@@ -195,11 +195,11 @@ let test_add_nat_valid_pkt () =
   Rewriter.translate table reverse_packet >|=
   Alcotest.check translate_result "Check NAT reply" (Ok expected_reply) >>= fun () ->
   (* trying the same operation again should update the expiration time *)
-  Rewriter.add table packet ((V4 xl), xlport) `NAT >|=
+  Rewriter.add ~now:0L table packet ((V4 xl), xlport) `NAT >|=
   Alcotest.check add_result "Check update expiration" (Ok ()) >>= fun () ->
   (* a half-match should fail with Overlap *)
   let packet = Constructors.full_packet ~payload ~proto ~ttl:52 ~src:xl ~dst ~src_port ~dst_port in
-  Rewriter.add table packet ((Ipaddr.V4 xl), xlport) `NAT >|=
+  Rewriter.add ~now:0L table packet ((Ipaddr.V4 xl), xlport) `NAT >|=
   Alcotest.check add_result "Check overlap detection" (Error `Overlap)
 
 let test_add_nat_broadcast () =
@@ -209,7 +209,7 @@ let test_add_nat_broadcast () =
                     ~dst:broadcast_dst ~src_port ~dst_port in
   let open Rewriter in
   empty () >>= fun t ->
-  add t broadcast ((Ipaddr.V4 xl), xlport) `NAT >|=
+  add ~now:0L t broadcast ((Ipaddr.V4 xl), xlport) `NAT >|=
   Alcotest.check add_result "Ignore broadcast" (Error `Cannot_NAT) >>= fun () ->
   (* try just an ethernet frame *)
   let e = Cstruct.create Ethif_wire.sizeof_ethernet in
@@ -260,11 +260,11 @@ let add_many_entries how_many =
           match (Random.int 10) with
           | 0 ->
             Printf.printf "adding a redirect rule\n%!";
-            Rewriter.add t packet ((V4 fixed_external_ip), random_port ())
+            Rewriter.add ~now:0L t packet ((V4 fixed_external_ip), random_port ())
               (`Redirect ((V4 fixed_internal_ip), random_port ()))
           | _ ->
             Printf.printf "adding a NAT rule\n%!";
-            Rewriter.add t packet ((V4 fixed_external_ip), random_port ()) `NAT
+            Rewriter.add ~now:0L t packet ((V4 fixed_external_ip), random_port ()) `NAT
         end >>= function
         | Error `Cannot_NAT ->
           Format.printf "With %d entries yet to go, \
@@ -283,7 +283,7 @@ let test_ping () =
   let packet = Constructors.make_icmp ~src:"192.168.1.5" ~dst:"8.8.8.8" (`Echo_request (5, 9, payload)) ~ttl:64 in
   let endpoint = Ipaddr.of_string_exn "82.1.1.8", 81 in
   (* Add rule *)
-  Rewriter.add t packet endpoint `NAT
+  Rewriter.add ~now:0L t packet endpoint `NAT
   >|= Alcotest.check add_result "Add ICMP rule" (Ok ()) >>= fun () ->
   (* Translate outgoing request *)
   let expected = Constructors.make_icmp ~src:"82.1.1.8" ~dst:"8.8.8.8" (`Echo_request (81, 9, payload)) ~ttl:63 in
@@ -322,7 +322,7 @@ let test_icmp_error () =
   let nat_ip = Ipaddr.of_string_exn "82.1.1.8" in
   let endpoint = nat_ip, 81 in
   (* Add rule *)
-  Rewriter.add t packet endpoint `NAT
+  Rewriter.add ~now:0L t packet endpoint `NAT
   >|= Alcotest.check add_result "Add TCP rule" (Ok ()) >>= fun () ->
   (* Translate outgoing request *)
   let expected = Constructors.full_packet       (* TCP packet to port 80 from NAT *)

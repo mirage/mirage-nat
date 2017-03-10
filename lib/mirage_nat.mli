@@ -26,8 +26,8 @@ module type S = sig
     * The payload in the result shares the Cstruct with the input, so they should be
     * treated as read-only. *)
 
-  val add : t -> Nat_packet.t -> endpoint -> [`NAT | `Redirect of endpoint] -> (unit, [> `Overlap | `Cannot_NAT]) result Lwt.t
-  (** [add t packet xl_endpoint mode] adds an entry to the table to translate packets
+  val add : t -> now:time -> Nat_packet.t -> endpoint -> [`NAT | `Redirect of endpoint] -> (unit, [> `Overlap | `Cannot_NAT]) result Lwt.t
+  (** [add t ~now packet xl_endpoint mode] adds an entry to the table to translate packets
       on [packet]'s channel according to [mode], and another entry to translate the
       replies back again.
 
@@ -44,6 +44,8 @@ module type S = sig
 
       In this case, [packet.dst] will typically be an endpoint on the
       NAT itself, to ensure all packets go via the NAT.
+
+      [now] is used to calculate the expiry time for the new entry.
 
       Returns [`Overlap] if the new entries would partially overlap with an existing
       entry.
@@ -66,12 +68,12 @@ module type SUBTABLE = sig
       that should be applied to a packet using [channel] - or [None] if no entry for [channel] exists.
       [expiry] is an absolute time-stamp. *)
 
-  val insert : t -> time -> (channel * channel) list -> (unit, [> `Overlap]) result Lwt.t
-  (** [insert t time translations] adds the given translations to the table.
+  val insert : t -> expiry:time -> (channel * channel) list -> (unit, [> `Overlap]) result Lwt.t
+  (** [insert t ~expiry translations] adds the given translations to the table.
       Each translation is a pair [input, target] - packets with channel [input] should be
       rewritten to have channel [output].
       It returns an error if the new entries would overlap with existing entries.
-      [time] is the absolute time-stamp of the desired expiry time. *)
+      [expiry] is the absolute time-stamp of the desired expiry time. *)
 
   val delete : t -> channel list -> unit Lwt.t
   (** [delete t sources] removes the entries mapping [sources], if they exist. *)
