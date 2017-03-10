@@ -1,10 +1,9 @@
 open Ipaddr
 
-open Lwt.Infix
+let src = Logs.Src.create "nat-rewrite" ~doc:"Mirage NAT packet rewriter"
+module Log = (val Logs.src_log src : Logs.LOG)
 
-type mode =
-  | Redirect
-  | Nat
+open Lwt.Infix
 
 let rewrite_icmp ~id icmp =
   match icmp.Icmpv4_packet.subheader with
@@ -63,11 +62,74 @@ let map_redirect ~left ~right ~translate_left ~translate_right =
   let response_mapping = external_lookup, external_mapping in
   [request_mapping; response_mapping]
 
-module Make(Nat_table : Mirage_nat.TABLE) = struct
-  let src = Logs.Src.create "nat-rewrite" ~doc:"Mirage NAT packet rewriter"
-  module Log = (val Logs.src_log src : Logs.LOG)
+let ports_of_ip = function
+  | `TCP (x, _) -> Tcp.Tcp_packet.(x.src_port, x.dst_port)
+  | `UDP (x, _) -> Udp_packet.(x.src_port, x.dst_port)
 
-  module N = Nat_table
+let make_ports_entry mode transport (other_xl_ip, other_xl_port) ~src ~dst =
+  match transport with
+  | `TCP _ | `UDP _ as transport ->
+    let src_port, dst_port = ports_of_ip transport in
+    let entries = match mode with
+      | `NAT ->
+        map_nat
+          ~left:(src, src_port)
+          ~right:(dst, dst_port)
+          ~translate_left:(other_xl_ip, other_xl_port)
+      | `Redirect final_endpoint ->
+        map_redirect
+          ~left:(src, src_port)
+          ~right:final_endpoint
+          ~translate_left:(dst, dst_port)
+          ~translate_right:(other_xl_ip, other_xl_port)
+    in
+    Ok entries
+
+let make_id_entry mode transport (other_xl_ip, other_xl_port) ~src ~dst =
+  match mode, transport with
+  | `NAT, `ICMP ({Icmpv4_packet.subheader = Icmpv4_packet.Id_and_seq (id, _); _}, _) ->
+    begin
+      let flip (x, y, id) = (y, x, id) in
+      let left_channel = (src, dst, id) in
+      let right_channel = (other_xl_ip, dst, other_xl_port) in
+      let request_mapping = left_channel, right_channel in
+      let response_mapping = flip right_channel, flip left_channel in
+      Ok [request_mapping; response_mapping]
+    end
+  | _, `ICMP _ -> Error `Cannot_NAT
+
+let result_map fn = function
+  | Ok x -> fn x
+  | Error _ as e -> Lwt.return e
+
+
+let get_ports ip payload =
+  if Cstruct.len payload < 8 then Error `Untranslated
+  else match Ipv4_packet.Unmarshal.int_to_protocol ip.Ipv4_packet.proto with
+    | Some `UDP -> Ok (`UDP, Udp_wire.get_udp_source_port payload, Udp_wire.get_udp_dest_port payload)
+    | Some `TCP -> Ok (`TCP, Tcp.Tcp_wire.get_tcp_src_port payload, Tcp.Tcp_wire.get_tcp_dst_port payload)
+    | _ -> Error `Untranslated
+
+let dup src =
+  let len = Cstruct.len src in
+  let copy = Cstruct.create_unsafe len in
+  Cstruct.blit src 0 copy 0 len;
+  copy
+
+let with_ports payload (sport, dport) proto =
+  let payload = dup payload in
+  begin match proto with
+    | `UDP ->
+      Udp_wire.set_udp_source_port payload sport;
+      Udp_wire.set_udp_dest_port payload dport
+    | `TCP ->
+      Tcp.Tcp_wire.set_tcp_src_port payload sport;
+      Tcp.Tcp_wire.set_tcp_dst_port payload dport
+  end;
+  payload
+
+module Make(N : Mirage_nat.TABLE) = struct
+
   type t = N.t
 
   let reset = N.reset
@@ -111,31 +173,6 @@ module Make(Nat_table : Mirage_nat.TABLE) = struct
     | _ ->
       Lwt.return (Error `Untranslated) (* don't autocreate new entries *)
 
-  let get_ports ip payload =
-    if Cstruct.len payload < 8 then Error `Untranslated
-    else match Ipv4_packet.Unmarshal.int_to_protocol ip.Ipv4_packet.proto with
-      | Some `UDP -> Ok (`UDP, Udp_wire.get_udp_source_port payload, Udp_wire.get_udp_dest_port payload)
-      | Some `TCP -> Ok (`TCP, Tcp.Tcp_wire.get_tcp_src_port payload, Tcp.Tcp_wire.get_tcp_dst_port payload)
-      | _ -> Error `Untranslated
-
-  let dup src =
-    let len = Cstruct.len src in
-    let copy = Cstruct.create_unsafe len in
-    Cstruct.blit src 0 copy 0 len;
-    copy
-
-  let with_ports payload (sport, dport) proto =
-    let payload = dup payload in
-    begin match proto with
-      | `UDP ->
-        Udp_wire.set_udp_source_port payload sport;
-        Udp_wire.set_udp_dest_port payload dport
-      | `TCP ->
-        Tcp.Tcp_wire.set_tcp_src_port payload sport;
-        Tcp.Tcp_wire.set_tcp_dst_port payload dport
-    end;
-    payload
-
   let translate table (packet:Nat_packet.t) =
     MProf.Trace.label "Nat_rewrite.translate";
     match packet with
@@ -177,52 +214,7 @@ module Make(Nat_table : Mirage_nat.TABLE) = struct
           end
         | _ -> Lwt.return (Error `Untranslated)
 
-  let ports_of_ip = function
-    | `TCP (x, _) -> Tcp.Tcp_packet.(x.src_port, x.dst_port)
-    | `UDP (x, _) -> Udp_packet.(x.src_port, x.dst_port)
-
-  let make_ports_entry mode transport
-      (other_xl_ip, other_xl_port)
-      (final_destination_ip, final_destination_port) ~src ~dst =
-    match transport with
-    | `TCP _ | `UDP _ as transport ->
-      let src_port, dst_port = ports_of_ip transport in
-      let entries = match mode with
-        | Nat ->
-          map_nat
-            ~left:(src, src_port)
-            ~right:(dst, dst_port)
-            ~translate_left:(other_xl_ip, other_xl_port)
-        | Redirect ->
-          map_redirect
-            ~left:(src, src_port)
-            ~right:(final_destination_ip, final_destination_port)
-            ~translate_left:(dst, dst_port)
-            ~translate_right:(other_xl_ip, other_xl_port)
-      in
-      Ok entries
-
-  let make_id_entry mode transport
-      (other_xl_ip, other_xl_port)
-      (_final_destination_ip, _final_destination_port) ~src ~dst =
-    match transport with
-    | `ICMP _ when mode = Redirect -> Error `Cannot_NAT
-    | `ICMP ({Icmpv4_packet.subheader = Icmpv4_packet.Id_and_seq (id, _); _}, _) ->
-      begin
-        let flip (x, y, id) = (y, x, id) in
-        let left_channel = (src, dst, id) in
-        let right_channel = (other_xl_ip, dst, other_xl_port) in
-        let request_mapping = left_channel, right_channel in
-        let response_mapping = flip right_channel, flip left_channel in
-        Ok [request_mapping; response_mapping]
-      end
-    | `ICMP _ -> Error `Cannot_NAT
-
-  let result_map fn = function
-    | Ok x -> fn x
-    | Error _ as e -> Lwt.return e
-
-  let add_entry mode table packet xl_endpoint final_endpoint =
+  let add table packet xl_endpoint mode =
     let `IPv4 (ip_header, transport) = packet in
     let check_scope ip =
       match Ipaddr.scope ip with
@@ -241,13 +233,8 @@ module Make(Nat_table : Mirage_nat.TABLE) = struct
         | `ICMP _ -> 120L (* RFC 5508: An ICMP Query session timer MUST NOT expire in less than 60 seconds *)
       in
       match transport with
-      | `TCP _ as transport -> make_ports_entry mode transport xl_endpoint final_endpoint ~src ~dst |> result_map (N.TCP.insert table expiration_window)
-      | `UDP _ as transport -> make_ports_entry mode transport xl_endpoint final_endpoint ~src ~dst |> result_map (N.UDP.insert table expiration_window)
-      | `ICMP _ as transport -> make_id_entry   mode transport xl_endpoint final_endpoint ~src ~dst |> result_map (N.ICMP.insert table expiration_window)
-
-  let add_redirect = add_entry Redirect
-
-  let add_nat table (packet:Nat_packet.t) (xl_ip, xl_port) =
-    add_entry Nat table packet (xl_ip, xl_port) (xl_ip, xl_port)
+      | `TCP _ as transport -> make_ports_entry mode transport xl_endpoint ~src ~dst |> result_map (N.TCP.insert table expiration_window)
+      | `UDP _ as transport -> make_ports_entry mode transport xl_endpoint ~src ~dst |> result_map (N.UDP.insert table expiration_window)
+      | `ICMP _ as transport -> make_id_entry   mode transport xl_endpoint ~src ~dst |> result_map (N.ICMP.insert table expiration_window)
 
 end

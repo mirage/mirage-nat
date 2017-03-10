@@ -26,27 +26,31 @@ module type S = sig
     * The payload in the result shares the Cstruct with the input, so they should be
     * treated as read-only. *)
 
-  val add_nat : t -> Nat_packet.t -> endpoint -> (unit, [> `Overlap | `Cannot_NAT]) result Lwt.t
-  (** Given a table, a frame, and a translation IP and port (i.e. a public
-      endpoint on the NAT device),
-      insert relevant entries for the (src_ip, src_port), (dst_ip, dst_port) from the
-      packet.
-      Entries will look like:
-      ((src_ip, src_port), (dst_ip, dst_port) to
-         (xl_ip, xl_port), (dst_ip, dst_port)) and
-      ((dst_ip, dst_port), (xl_ip, xl_port)) to
-         (dst_ip, dst_port), (src_ip, src_port)). *)
+  val add : t -> Nat_packet.t -> endpoint -> [`NAT | `Redirect of endpoint] -> (unit, [> `Overlap | `Cannot_NAT]) result Lwt.t
+  (** [add t packet xl_endpoint mode] adds an entry to the table to translate packets
+      on [packet]'s channel according to [mode], and another entry to translate the
+      replies back again.
 
-  val add_redirect : t -> Nat_packet.t -> endpoint -> endpoint -> (unit, [> `Overlap | `Cannot_NAT]) result Lwt.t
-  (** Given a table, a packet from which (src_ip, src_port) and (xl_left_ip,
-      xl_left_port) can be extracted (these are source and destination for the
-      packet), a translation (xl_left_ip, xl_left_port) pair, and a final
-      destination (dst_ip, dst_port) pair, add entries to table of the form:
-      ((src_ip, src_port), (xl_left_ip, xl_left_port)) to
-           ((xl_right_ip, xl_right_port), (dst_ip, dst_port)) and
-      ((dst_ip, dst_port), (xl_right_ip, xl_right_port)) to
-           ((xl_left_ip, xl_left_port), (src_ip, src_port)).
-      ((xl_ip, xl_right_port), (dst_ip, dst_port)) to (src_ip, src_port). *)
+      If [mode] is [`NAT] then the entries will be of the form:
+
+      (packet.src -> packet.dst) becomes (xl_endpoint -> packet.dst)
+      (packet.dst -> xl_endpoint) becomes (packet.dst -> packet.src)
+
+      If [mode] is [`Redirect new_dst] then
+      the entries will be of the form:
+
+      (packet.src -> packet.dst) becomes (xl_endpoint -> new_dst)
+      (new_dst -> xl_endpoint) becomes (packet.dst -> packet.src)
+
+      In this case, [packet.dst] will typically be an endpoint on the
+      NAT itself, to ensure all packets go via the NAT.
+
+      Returns [`Overlap] if the new entries would partially overlap with an existing
+      entry.
+
+      Returns [`Cannot_NAT] if the packet has a non-Global/Organization source or destination,
+      or is an ICMP packet which is not a query.
+  *)
 
   val reset : t -> unit Lwt.t
   (** Remove all entries from the table. *)
