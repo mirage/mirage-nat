@@ -4,5 +4,4 @@ Mirage_nat
 Nat_packet
 Nat_rewrite
 Nat_translations
-Nat_decompose
 # OASIS_STOP
