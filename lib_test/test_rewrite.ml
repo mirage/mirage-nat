@@ -1,5 +1,4 @@
 open Ipaddr
-open Test_lib
 open Lwt.Infix
 
 let ipv4_of_str = Ipaddr.V4.of_string_exn
@@ -8,9 +7,7 @@ let packet_t = (module Nat_packet : Alcotest.TESTABLE with type t = Nat_packet.t
 let translate_result = Alcotest.result packet_t (Alcotest.of_pp Mirage_nat.pp_error)
 let add_result = Alcotest.(result unit (of_pp Mirage_nat.pp_error))
 
-module Rewriter = Mirage_nat_hashtable.Make(Mclock)(Unix_time)
-
-let clock = Lwt_main.run (Mclock.connect ())
+module Rewriter = Mirage_nat_hashtable
 
 module Default_values = struct
   let src = (ipv4_of_str "192.168.108.26")
@@ -69,7 +66,7 @@ module Constructors = struct
     packet
  
   let make_table_with_redirect ip_packet ~internal_xl ~internal_xl_port ~internal_client ~internal_client_port =
-    Rewriter.empty clock >>= fun t ->
+    Rewriter.empty () >>= fun t ->
     Rewriter.add_redirect t ip_packet
       ((V4 internal_xl), internal_xl_port)
       ((V4 internal_client), internal_client_port)
@@ -78,7 +75,7 @@ module Constructors = struct
     | Ok () -> Lwt.return t
 
   let make_table_with_nat ip_packet ~xl ~xlport =
-    Rewriter.empty clock >>= fun t ->
+    Rewriter.empty () >>= fun t ->
     Rewriter.add_nat t ip_packet ((V4 xl), xlport) >|= function
     | Error e ->
       Alcotest.fail (Fmt.strf "Failed to insert test data into table structure: %a" Mirage_nat.pp_error e)
@@ -211,7 +208,7 @@ let test_add_nat_broadcast () =
   let broadcast = Constructors.full_packet ~payload ~proto:`TCP ~ttl:30 ~src
                     ~dst:broadcast_dst ~src_port ~dst_port in
   let open Rewriter in
-  empty clock >>= fun t ->
+  empty () >>= fun t ->
   add_nat t broadcast ((Ipaddr.V4 xl), xlport) >|=
   Alcotest.check add_result "Ignore broadcast" (Error `Cannot_NAT) >>= fun () ->
   (* try just an ethernet frame *)
@@ -246,7 +243,7 @@ let add_many_entries how_many =
   let fixed_internal_ip = random_ipv4 () in
   let fixed_external_ip = random_ipv4 () in
   let open Rewriter in
-  empty clock >>= fun t ->
+  empty () >>= fun t ->
   let rec shove_entries = function
     | n when n <= 0 -> Lwt.return_unit
     | n ->
@@ -281,7 +278,7 @@ let add_many_entries how_many =
   shove_entries how_many
 
 let test_ping () =
-  Rewriter.empty clock >>= fun t ->
+  Rewriter.empty () >>= fun t ->
   let payload = Cstruct.create 0 in
   let packet = Constructors.make_icmp ~src:"192.168.1.5" ~dst:"8.8.8.8" (`Echo_request (5, 9, payload)) ~ttl:64 in
   let endpoint = Ipaddr.of_string_exn "82.1.1.8", 81 in
@@ -312,7 +309,7 @@ let dec_ttl (`IPv4 (ip, transport)) =
   `IPv4 (ip, transport)
 
 let test_icmp_error () =
-  Rewriter.empty clock >>= fun t ->
+  Rewriter.empty () >>= fun t ->
   let payload = Cstruct.create 10 in
   let packet = Constructors.full_packet (* TCP packet to port 80 from internal machine *)
       ~payload

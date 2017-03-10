@@ -1,22 +1,5 @@
-type protocol =
-  | Udp
-  | Tcp
-  | Icmp
-
 type port = Cstruct.uint16
 type endpoint = (Ipaddr.t * port)
-type mapping = (endpoint * endpoint)
-
-type translation = {
-  internal_lookup: mapping;
-  external_lookup: mapping;
-  internal_mapping: mapping;
-  external_mapping: mapping
-}
-
-type mode =
-  | Redirect
-  | Nat
 
 type error = [`Overlap | `Cannot_NAT | `Untranslated | `TTL_exceeded]
 
@@ -40,17 +23,39 @@ module type S = sig
   val reset : t -> unit Lwt.t
 end
 
-module type Lookup = sig
-  type t 
+module type SUBTABLE = sig
+  type t
 
-  val lookup : t -> protocol -> source:endpoint -> destination:endpoint ->
-    (int64 * mapping) option Lwt.t
+  type channel
 
-  val insert : t -> time -> protocol -> translation -> (unit, [> `Overlap]) result Lwt.t
+  val lookup : t -> channel -> (time * channel) option Lwt.t
+  (** [lookup t channel] is [Some (expiry, translated_channel)] - the new endpoints
+      that should be applied to a packet using [channel] - or [None] if no entry for [channel] exists.
+      [expiry] is an absolute time-stamp. *)
 
-  val delete : t -> protocol ->
-    internal_lookup:mapping ->
-    external_lookup:mapping -> unit Lwt.t
+  val insert : t -> time -> (channel * channel) list -> (unit, [> `Overlap]) result Lwt.t
+  (** [insert t time translations] adds the given translations to the table.
+      Each translation is a pair [input, target] - packets with channel [input] should be
+      rewritten to have channel [output].
+      It returns an error if the new entries would overlap with existing entries.
+      [time] is the absolute time-stamp of the insertion time (i.e. the current time). *)
+
+  val delete : t -> channel list -> unit Lwt.t
+  (** [delete t sources] removes the entries mapping [sources], if they exist. *)
+end
+
+module type TABLE = sig
+  type t
+
+  module TCP  : SUBTABLE with type t := t and type channel = endpoint * endpoint
+  (** A TCP channel is identified by the source and destination endpoints. *)
+
+  module UDP  : SUBTABLE with type t := t and type channel = endpoint * endpoint
+  (** A UDP channel is identified by the source and destination endpoints. *)
+
+  module ICMP : SUBTABLE with type t := t and type channel = Ipaddr.t * Ipaddr.t * Cstruct.uint16
+  (** An ICMP query is identified by the source and destination IP addresses and the ICMP ID. *)
 
   val reset : t -> unit Lwt.t
+  (** Remove all entries from the table. *)
 end

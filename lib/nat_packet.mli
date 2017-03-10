@@ -23,6 +23,6 @@ val to_cstruct : t -> Cstruct.t list
 (** [to_cstruct packet] is the list of cstructs representing [packet].
     It currently returns [(ip_header, transport_header, payload)] *)
 
-val pp : t Fmt.t
+val pp : [< t] Fmt.t
 
 val equal : t -> t -> bool
