@@ -1,5 +1,5 @@
 type port = Cstruct.uint16
-type endpoint = Ipaddr.t * port
+type endpoint = Ipaddr.V4.t * port
 type time = int64
 
 type error = [
@@ -61,7 +61,8 @@ end
 module type SUBTABLE = sig
   type t
 
-  type channel
+  type transport_channel
+  type channel = Ipaddr.V4.t * Ipaddr.V4.t * transport_channel
 
   val lookup : t -> channel -> (time * channel) option Lwt.t
   (** [lookup t channel] is [Some (expiry, translated_channel)] - the new endpoints
@@ -82,14 +83,14 @@ end
 module type TABLE = sig
   type t
 
-  module TCP  : SUBTABLE with type t := t and type channel = endpoint * endpoint
-  (** A TCP channel is identified by the source and destination endpoints. *)
+  module TCP  : SUBTABLE with type t := t and type transport_channel = port * port
+  (** A TCP channel is identified by the source and destination ports. *)
 
-  module UDP  : SUBTABLE with type t := t and type channel = endpoint * endpoint
-  (** A UDP channel is identified by the source and destination endpoints. *)
+  module UDP  : SUBTABLE with type t := t and type transport_channel = port * port
+  (** A UDP channel is identified by the source and destination ports. *)
 
-  module ICMP : SUBTABLE with type t := t and type channel = Ipaddr.t * Ipaddr.t * Cstruct.uint16
-  (** An ICMP query is identified by the source and destination IP addresses and the ICMP ID. *)
+  module ICMP : SUBTABLE with type t := t and type transport_channel = Cstruct.uint16
+  (** An ICMP query is identified by the ICMP ID. *)
 
   val reset : t -> unit Lwt.t
   (** Remove all entries from the table. *)

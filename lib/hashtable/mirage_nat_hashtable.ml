@@ -6,18 +6,21 @@
 
    Doing this will cause us to need a real parser.
 *)
-open Mirage_nat
+
+type 'a channel = Ipaddr.V4.t * Ipaddr.V4.t * 'a
+type 'a table = ('a channel, Mirage_nat.time * 'a channel) Hashtbl.t
 
 module Storage = struct
 
   type t = {
-    tcp: ((endpoint * endpoint), (time * (endpoint * endpoint))) Hashtbl.t;
-    udp: ((endpoint * endpoint), (time * (endpoint * endpoint))) Hashtbl.t;
-    icmp: ((Ipaddr.t * Ipaddr.t * Cstruct.uint16), (time * (Ipaddr.t * Ipaddr.t * Cstruct.uint16))) Hashtbl.t;
+    tcp: (Mirage_nat.port * Mirage_nat.port) table;
+    udp: (Mirage_nat.port * Mirage_nat.port) table;
+    icmp: Cstruct.uint16 table;
   }
 
-  module Subtable(L : sig type channel val table : t -> (channel, time * channel) Hashtbl.t end) = struct
-    type channel = L.channel
+  module Subtable(L : sig type transport_channel val table : t -> transport_channel table end) = struct
+    type transport_channel = L.transport_channel
+    type nonrec channel = transport_channel channel
 
     let lookup t key =
       MProf.Trace.label "Mirage_nat_hashtable.lookup.read";
@@ -47,9 +50,9 @@ module Storage = struct
       Lwt.return_unit
   end
 
-  module TCP  = Subtable(struct type channel = endpoint * endpoint let table t = t.tcp end)
-  module UDP  = Subtable(struct type channel = endpoint * endpoint let table t = t.udp end)
-  module ICMP = Subtable(struct type channel = Ipaddr.t * Ipaddr.t * Cstruct.uint16 let table t = t.icmp end)
+  module TCP  = Subtable(struct type transport_channel = Mirage_nat.port * Mirage_nat.port let table t = t.tcp end)
+  module UDP  = Subtable(struct type transport_channel = Mirage_nat.port * Mirage_nat.port let table t = t.udp end)
+  module ICMP = Subtable(struct type transport_channel = Cstruct.uint16 let table t = t.icmp end)
 
   let reset t =
     Hashtbl.reset t.tcp;

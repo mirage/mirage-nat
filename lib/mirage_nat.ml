@@ -1,5 +1,5 @@
 type port = Cstruct.uint16
-type endpoint = (Ipaddr.t * port)
+type endpoint = (Ipaddr.V4.t * port)
 
 type error = [`Overlap | `Cannot_NAT | `Untranslated | `TTL_exceeded]
 
@@ -25,7 +25,8 @@ end
 module type SUBTABLE = sig
   type t
 
-  type channel
+  type transport_channel
+  type channel = Ipaddr.V4.t * Ipaddr.V4.t * transport_channel
 
   val lookup : t -> channel -> (time * channel) option Lwt.t
   val insert : t -> expiry:time -> (channel * channel) list -> (unit, [> `Overlap]) result Lwt.t
@@ -35,15 +36,9 @@ end
 module type TABLE = sig
   type t
 
-  module TCP  : SUBTABLE with type t := t and type channel = endpoint * endpoint
-  (** A TCP channel is identified by the source and destination endpoints. *)
-
-  module UDP  : SUBTABLE with type t := t and type channel = endpoint * endpoint
-  (** A UDP channel is identified by the source and destination endpoints. *)
-
-  module ICMP : SUBTABLE with type t := t and type channel = Ipaddr.t * Ipaddr.t * Cstruct.uint16
-  (** An ICMP query is identified by the source and destination IP addresses and the ICMP ID. *)
-
+  module TCP  : SUBTABLE with type t := t and type transport_channel = port * port
+  module UDP  : SUBTABLE with type t := t and type transport_channel = port * port
+  module ICMP : SUBTABLE with type t := t and type transport_channel = Cstruct.uint16
   val reset : t -> unit Lwt.t
   (** Remove all entries from the table. *)
 end
