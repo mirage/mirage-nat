@@ -40,6 +40,8 @@ module Storage = struct
         let first_known = known m in
         if List.exists (fun x -> known x <> first_known) ms then Lwt.return (Error `Overlap)
         else (
+          (* TODO: this is not quite right if all mappings already exist, because it's possible that
+             the lookups are part of differing pairs -- this situation is pathological, but possible *)
           List.iter (fun (a, b) -> Hashtbl.add t a (expiry, b)) mappings;
           Lwt.return (Ok ())
         )

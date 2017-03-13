@@ -52,7 +52,7 @@ module Make(N : Mirage_nat.TABLE) = struct
     val expiry_ns : int64
 
     val channel : transport -> Table.transport_channel option
-    (* [channel transport] extracts the transport information from a request messag.
+    (* [channel transport] extracts the transport information from a request message.
         Returns [None] if the message is not suitable for NAT. *)
 
     val flip : Table.transport_channel -> Table.transport_channel

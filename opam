@@ -12,7 +12,10 @@ build: [
   ["./configure" "--prefix=%{prefix}%"]
   [make]
 ]
-build-test: [make "test"]
+build-test: [
+  ["./configure" "--enable-tests"]
+  [make "test"]
+]
 install: [make "install"]
 remove: [
   ["ocamlfind" "remove" "mirage-nat"]

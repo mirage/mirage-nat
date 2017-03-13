@@ -20,7 +20,7 @@ type error = Format.formatter -> unit
 
 let pp_error f e = e f
 
-let icmp_type header =  (* TODO: is this correct? *)
+let icmp_type header =
   let open Icmpv4_wire in
   match header.Icmpv4_packet.ty with
   | Timestamp_request
