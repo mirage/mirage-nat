@@ -1,12 +1,10 @@
-PKG mirage-types
-PKG tcpip
-PKG ipaddr
-PKG oUnit
-PKG irmin-network-datastores
-PKG sexplib
-PKG type_conv
-PKG sexplib.syntax
+PKG mirage-clock mirage-time
+PKG tcpip ipaddr lwt mirage-profile rresult logs
+PKG oUnit alcotest
 S lib
+S lib/hashtable
 S lib_test
+B _build
 B _build/lib
+B _build/lib/hashtable
 B _build/lib_test

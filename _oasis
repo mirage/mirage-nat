@@ -10,49 +10,26 @@ BuildTools: ocamlbuild
 
 Description: rewrite packets to support translation between external and internal address space
 
-Flag randomized
-  Description: build randomized tests (requires arbitrary-network)
-  Default: false
-
 Library "mirage-nat"
   Path: lib
-  Modules: Nat_rewrite, Nat_translations, Nat_decompose, Nat_types
-  InternalModules: Nat_shims, Nat_lookup, Nat_table
-  BuildDepends: ipaddr, tcpip, cstruct, sexplib, sexplib.syntax, tc, irmin-network-datastores, irmin, irmin.mem, lwt, mirage-profile
+  Modules: Mirage_nat, Nat_packet
+  InternalModules: Nat_rewrite
+  BuildDepends: ipaddr, tcpip, tcpip.ethif, tcpip.arpv4, tcpip.ipv4, tcpip.ipv6, tcpip.icmpv4, tcpip.udp, tcpip.tcp, cstruct, lwt, mirage-profile, rresult, logs, mirage-time, mirage-clock, ppx_deriving.eq
 
-Executable randomized_tests
-  Build$: flag(randomized) && flag(tests)
-  Path: lib_test
-  MainIs: test_randomized.ml
-  ByteOpt: -g
-  BuildDepends: oUnit, alcotest, quickcheck, mirage-nat, arbitrary-network
-
-Test randomized_tests
-  Run$: flag(randomized) && flag(tests)
-  Command: $randomized_tests
-
-Executable test_decompose
-  Build$: flag(tests)
-  Install: false
-  Path: lib_test
-  Custom: true
-  CompiledObject: best
-  MainIs: test_decompose.ml
-  ByteOpt: -g
-  BuildDepends: oUnit, alcotest, mirage-nat, tcpip
+Library "mirage-nat-hashtable"
+  Path: lib/hashtable
+  Findlibname: hashtable
+  FindlibParent: mirage-nat
+  Modules: Mirage_nat_hashtable
+  BuildDepends: ipaddr, tcpip, cstruct, lwt, mirage-profile, mirage-nat
 
 Executable test_rewrite
   Build$: flag(tests)
   Install: false
   Path: lib_test
-  Custom: true
   MainIs: test_rewrite.ml
   ByteOpt: -g
-  BuildDepends: oUnit, tcpip, alcotest, mirage-nat, lwt.unix
-
-Test test_decompose
-  Run$: flag(tests)
-  Command: $test_decompose
+  BuildDepends: oUnit, alcotest, mirage-nat, mirage-nat.hashtable, lwt.unix, io-page.unix, logs.fmt, mirage-clock-unix
 
 Test test_rewrite
   Run$: flag(tests)

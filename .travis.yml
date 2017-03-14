@@ -1,0 +1,9 @@
+language: c
+dist: trusty
+sudo: required
+install: wget https://raw.githubusercontent.com/ocaml/ocaml-ci-scripts/master/.travis-opam.sh
+script: bash -ex .travis-opam.sh
+env:
+  - OCAML_VERSION=4.04 PINS="tcpip:https://github.com/talex5/mirage-tcpip.git#fix-length-checks"
+os:
+  - linux
