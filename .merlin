@@ -1,6 +1,6 @@
 PKG mirage-clock mirage-time
 PKG tcpip ipaddr lwt mirage-profile rresult logs
-PKG oUnit
+PKG oUnit alcotest
 S lib
 S lib/hashtable
 S lib_test

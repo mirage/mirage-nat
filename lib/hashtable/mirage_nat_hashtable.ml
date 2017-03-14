@@ -6,71 +6,72 @@
 
    Doing this will cause us to need a real parser.
 *)
-open Mirage_nat
 
-let (>>=) = Lwt.bind
+type 'a channel = Ipaddr.V4.t * Ipaddr.V4.t * 'a
+type 'a table = ('a channel, Mirage_nat.time * 'a channel) Hashtbl.t
 
-module Storage(Clock : Mirage_clock_lwt.MCLOCK)(Time: TIME) : sig
-  include Mirage_nat.Lookup with type config = unit
-end = struct
+module Storage = struct
 
   type t = {
-    store: ((protocol * mapping), (int64 * mapping)) Hashtbl.t;
-    clock: Clock.t;
+    tcp: (Mirage_nat.port * Mirage_nat.port) table;
+    udp: (Mirage_nat.port * Mirage_nat.port) table;
+    icmp: Cstruct.uint16 table;
   }
 
-  type config = unit
+  module Subtable(L : sig type transport_channel val table : t -> transport_channel table end) = struct
+    type transport_channel = L.transport_channel
+    type nonrec channel = transport_channel channel
 
-  let rec tick t () =
-    MProf.Trace.label "Mirage_nat.tick";
-    let expiry_check_interval = Duration.of_sec 6 in
-    let now = Clock.elapsed_ns t.clock in
-    Hashtbl.iter (fun key (expiry, _) ->
-        match Int64.compare expiry now with
-        | n when n < 0 -> Hashtbl.remove t.store key
-        | _ -> ()
-      ) t.store;
-    Time.sleep_ns expiry_check_interval >>= tick t
+    let lookup t key =
+      MProf.Trace.label "Mirage_nat_hashtable.lookup.read";
+      let t = L.table t in
+      try Lwt.return (Some (Hashtbl.find t key))
+      with Not_found -> Lwt.return_none
 
-  let empty clock =
+    (* cases that should result in a valid mapping:
+       neither side is already mapped *)
+    let insert t ~expiry mappings =
+      MProf.Trace.label "Mirage_nat_hashtable.insert";
+      let t = L.table t in
+      match mappings with
+      | [] -> Lwt.return (Ok ())
+      | m :: ms ->
+        let known (src, _dst) = Hashtbl.mem t src in
+        let first_known = known m in
+        if List.exists (fun x -> known x <> first_known) ms then Lwt.return (Error `Overlap)
+        else (
+          (* TODO: this is not quite right if all mappings already exist, because it's possible that
+             the lookups are part of differing pairs -- this situation is pathological, but possible *)
+          List.iter (fun (a, b) -> Hashtbl.add t a (expiry, b)) mappings;
+          Lwt.return (Ok ())
+        )
+
+    let delete t mappings =
+      let t = L.table t in
+      List.iter (Hashtbl.remove t) mappings;
+      Lwt.return_unit
+  end
+
+  module TCP  = Subtable(struct type transport_channel = Mirage_nat.port * Mirage_nat.port let table t = t.tcp end)
+  module UDP  = Subtable(struct type transport_channel = Mirage_nat.port * Mirage_nat.port let table t = t.udp end)
+  module ICMP = Subtable(struct type transport_channel = Cstruct.uint16 let table t = t.icmp end)
+
+  let reset t =
+    Hashtbl.reset t.tcp;
+    Hashtbl.reset t.udp;
+    Hashtbl.reset t.icmp;
+    Lwt.return_unit
+
+  let empty () =
     (* initial size is completely arbitrary *)
-    Lwt.return { store = Hashtbl.create 21; clock }
-
-  let lookup t proto ~source ~destination =
-    MProf.Trace.label "Mirage_nat_hashtable.lookup.read";
-    match Hashtbl.mem t.store (proto, (source, destination)) with
-    | false -> Lwt.return None
-    | true ->
-      Lwt.return (Some (Hashtbl.find t.store (proto, (source, destination))))
-
-  (* cases that should result in a valid mapping:
-     neither side is already mapped *)
-  let insert t expiry_interval proto mappings =
-    MProf.Trace.label "Mirage_nat_hashtable.insert";
-    let check store proto pair =
-      Hashtbl.mem store (proto, pair)
-    in
-    let internal_mem = check t.store proto mappings.internal_lookup in
-    let external_mem = check t.store proto mappings.external_lookup in
-    match internal_mem, external_mem with
-    | true, true (* TODO: this is not quite right, because it's possible that
-                        the lookups are part of differing pairs -- this
-                        situation is pathological, but possible *)
-    | false, false ->
-      let expiration = Int64.add (Clock.elapsed_ns t.clock) expiry_interval in
-      Hashtbl.add t.store (proto, mappings.internal_lookup) (expiration, mappings.internal_mapping);
-      Hashtbl.add t.store (proto, mappings.external_lookup) (expiration, mappings.external_mapping);
-      Lwt.return (Some t)
-    | _, _ -> Lwt.return None
-
-  let delete t proto ~internal_lookup ~external_lookup =
-    Hashtbl.remove t.store (proto, internal_lookup);
-    Hashtbl.remove t.store (proto, external_lookup);
-    Lwt.return t
+    Lwt.return {
+      tcp = Hashtbl.create 21;
+      udp = Hashtbl.create 21;
+      icmp = Hashtbl.create 21;
+    }
 
 end
 
-module Make(Clock: CLOCK) (Time: TIME) = struct
-  module Table = Storage(Clock)(Time)
-  include Nat_rewrite.Make(Table)
-end
+include Nat_rewrite.Make(Storage)
+
+let empty = Storage.empty

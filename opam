@@ -9,10 +9,13 @@ dev-repo: "https://github.com/yomimono/mirage-nat.git"
 license: "ISC"
 
 build: [
-  ["./configure" "--prefix=%{prefix}%" "--%{arbitrary-network:enable}%-tests"]
+  ["./configure" "--prefix=%{prefix}%"]
   [make]
 ]
-build-test: [make "test"]
+build-test: [
+  ["./configure" "--enable-tests"]
+  [make "test"]
+]
 install: [make "install"]
 remove: [
   ["ocamlfind" "remove" "mirage-nat"]
@@ -28,10 +31,11 @@ depends: [
   "lwt"
   "rresult"
   "logs"
+  "ppx_deriving" {build}
   "tcpip" { >= "3.0.0" }
   "ounit" {test}
   "alcotest" {test}
-  "arbitrary-test" {test}
+  "mirage-clock-unix" {test}
 ]
 depopts: [
   "irmin-network-datastores"

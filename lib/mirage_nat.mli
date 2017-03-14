@@ -1,27 +1,15 @@
-type protocol =
-  | Udp
-  | Tcp
-
 type port = Cstruct.uint16
-type endpoint = (Ipaddr.t * port)
-type mapping = (endpoint * endpoint)
-
-type translation = {
-  internal_lookup: mapping;
-  external_lookup: mapping;
-  internal_mapping: mapping;
-  external_mapping: mapping
-}
-
-type mode =
-  | Redirect
-  | Nat
-
-type translate_result =
-  | Translated of Ipaddr.t
-  | Untranslated
-
+type endpoint = Ipaddr.V4.t * port
 type time = int64
+
+type error = [
+  | `Overlap      (* There is already a translation using this slot. *)
+  | `Cannot_NAT   (* It is not possible to make this translation for this type of packet. *)
+  | `Untranslated (* There was no matching entry in the NAT table. *)
+  | `TTL_exceeded (* The packet's time-to-live has run out *)
+]
+
+val pp_error : [< error] Fmt.t
 
 module type CLOCK = Mirage_clock_lwt.MCLOCK
 
@@ -29,60 +17,81 @@ module type TIME = Mirage_time_lwt.S
 
 module type S = sig
   type t
-  type config
 
-  type insert_result =
-    | Ok
-    | Overlap
-    | Unparseable
+  val translate : t -> Nat_packet.t -> (Nat_packet.t, [> `Untranslated | `TTL_exceeded]) result Lwt.t
+  (** Given a lookup table and an ip-level packet,
+    * perform any translation indicated by presence in the table.
+    * If the packet should be forwarded, return the translated packet,
+    * else return [Error `Untranslated].
+    * The payload in the result shares the Cstruct with the input, so they should be
+    * treated as read-only. *)
 
-  val empty : config -> t Lwt.t
+  val add : t -> now:time -> Nat_packet.t -> endpoint -> [`NAT | `Redirect of endpoint] -> (unit, [> `Overlap | `Cannot_NAT]) result Lwt.t
+  (** [add t ~now packet xl_endpoint mode] adds an entry to the table to translate packets
+      on [packet]'s channel according to [mode], and another entry to translate the
+      replies back again.
 
-  (** given a lookup table and an ip-level frame,
-    * perform any translation indicated by presence in the table
-    * on the Cstruct.t .  If the packet should be forwarded, return Some packet,
-    * else return None.
-    * This function is zero-copy and mutates values in the given Cstruct.  *)
-  val translate : t -> Cstruct.t -> translate_result Lwt.t
+      If [mode] is [`NAT] then the entries will be of the form:
 
-  (** given a table, a frame, and a translation IP and port,
-    * put relevant entries for the (src_ip, src_port), (dst_ip, dst_port) from the
-    * frame and given (xl_ip, xl_port).
-      entries will look like:
-      ((src_ip, src_port), (dst_ip, dst_port) to
-         (xl_ip, xl_port), (dst_ip, dst_port)) and
-      ((dst_ip, dst_port), (xl_ip, xl_port)) to
-         (dst_ip, dst_port), (src_ip, src_port)).
-    * if insertion succeeded, return the new table;
-    * otherwise, return an error type indicating the problem. *)
-  val add_nat : t -> Cstruct.t -> endpoint -> insert_result Lwt.t
+      (packet.src -> packet.dst) becomes (xl_endpoint -> packet.dst)
+      (packet.dst -> xl_endpoint) becomes (packet.dst -> packet.src)
 
-  (** given a table, a frame from which (src_ip, src_port) and (xl_left_ip,
-      xl_left_port) can be extracted (these are source and destination for the
-      packet), a translation (xl_left_ip, xl_left_port) pair, and a final
-      destination (dst_ip, dst_port) pair, add entries to table of the form:
-      ((src_ip, src_port), (xl_left_ip, xl_left_port)) to
-           ((xl_right_ip, xl_right_port), (dst_ip, dst_port)) and
-      ((dst_ip, dst_port), (xl_right_ip, xl_right_port)) to
-           ((xl_left_ip, xl_left_port), (src_ip, src_port)).
-      ((xl_ip, xl_right_port), (dst_ip, dst_port)) to (src_ip, src_port).
-    * if insertion succeeded, return the new table;
-    * otherwise, return an error type indicating the problem. *)
-  val add_redirect : t -> Cstruct.t -> endpoint -> endpoint -> insert_result Lwt.t
+      If [mode] is [`Redirect new_dst] then
+      the entries will be of the form:
+
+      (packet.src -> packet.dst) becomes (xl_endpoint -> new_dst)
+      (new_dst -> xl_endpoint) becomes (packet.dst -> packet.src)
+
+      In this case, [packet.dst] will typically be an endpoint on the
+      NAT itself, to ensure all packets go via the NAT.
+
+      [now] is used to calculate the expiry time for the new entry.
+
+      Returns [`Overlap] if the new entries would partially overlap with an existing
+      entry.
+
+      Returns [`Cannot_NAT] if the packet has a non-Global/Organization source or destination,
+      or is an ICMP packet which is not a query.
+  *)
+
+  val reset : t -> unit Lwt.t
+  (** Remove all entries from the table. *)
 end
 
-module type Lookup = sig
-  type t 
-  type config
+module type SUBTABLE = sig
+  type t
 
-  val lookup : t -> protocol -> source:endpoint -> destination:endpoint ->
-    (int64 * mapping) option Lwt.t
+  type transport_channel
+  type channel = Ipaddr.V4.t * Ipaddr.V4.t * transport_channel
 
-  val insert : t -> time -> protocol -> translation -> t option Lwt.t
+  val lookup : t -> channel -> (time * channel) option Lwt.t
+  (** [lookup t channel] is [Some (expiry, translated_channel)] - the new endpoints
+      that should be applied to a packet using [channel] - or [None] if no entry for [channel] exists.
+      [expiry] is an absolute time-stamp. *)
 
-  val delete : t -> protocol ->
-    internal_lookup:mapping ->
-    external_lookup:mapping -> t Lwt.t
+  val insert : t -> expiry:time -> (channel * channel) list -> (unit, [> `Overlap]) result Lwt.t
+  (** [insert t ~expiry translations] adds the given translations to the table.
+      Each translation is a pair [input, target] - packets with channel [input] should be
+      rewritten to have channel [output].
+      It returns an error if the new entries would overlap with existing entries.
+      [expiry] is the absolute time-stamp of the desired expiry time. *)
 
-  val empty : config -> t Lwt.t
+  val delete : t -> channel list -> unit Lwt.t
+  (** [delete t sources] removes the entries mapping [sources], if they exist. *)
+end
+
+module type TABLE = sig
+  type t
+
+  module TCP  : SUBTABLE with type t := t and type transport_channel = port * port
+  (** A TCP channel is identified by the source and destination ports. *)
+
+  module UDP  : SUBTABLE with type t := t and type transport_channel = port * port
+  (** A UDP channel is identified by the source and destination ports. *)
+
+  module ICMP : SUBTABLE with type t := t and type transport_channel = Cstruct.uint16
+  (** An ICMP query is identified by the ICMP ID. *)
+
+  val reset : t -> unit Lwt.t
+  (** Remove all entries from the table. *)
 end
