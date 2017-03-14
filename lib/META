@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 6fdc44c9356bcbd167ef12b518cb9dda)
+# DO NOT EDIT (digest: 230042c599c22d043eb41b1ead440623)
 version = "0.6.0"
 description = "an embryonic NAT module"
 requires =
@@ -12,7 +12,7 @@ exists_if = "mirage-nat.cma"
 package "hashtable" (
  version = "0.6.0"
  description = "an embryonic NAT module"
- requires = "ipaddr tcpip cstruct lwt mirage-profile mirage-nat"
+ requires = "ipaddr tcpip cstruct lwt mirage-profile mirage-nat lru"
  archive(byte) = "mirage-nat-hashtable.cma"
  archive(byte, plugin) = "mirage-nat-hashtable.cma"
  archive(native) = "mirage-nat-hashtable.cmxa"
