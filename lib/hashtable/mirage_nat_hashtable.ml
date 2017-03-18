@@ -81,6 +81,10 @@ module Storage = struct
       let t = L.table t in
       t := List.fold_left (fun acc m -> L.LRU.remove m acc) !t mappings;
       Lwt.return_unit
+
+    let pp f t =
+      let t = !t in
+      Fmt.pf f "%d/%d" (L.LRU.size t) (L.LRU.capacity t)
   end
 
   module TCP  = Subtable(struct module LRU = Port_cache let table t = t.tcp  type transport_channel = Mirage_nat.port * Mirage_nat.port end)
@@ -106,8 +110,16 @@ module Storage = struct
       icmp = ref defaults.empty_icmp;
     }
 
+  let pp_summary f t =
+    Fmt.pf f "NAT{tcp:%a udp:%a icmp:%a}"
+      TCP.pp t.tcp
+      UDP.pp t.udp
+      ICMP.pp t.icmp
+
 end
 
 include Nat_rewrite.Make(Storage)
 
 let empty = Storage.empty
+
+let pp_summary = Storage.pp_summary
