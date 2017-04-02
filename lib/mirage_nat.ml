@@ -39,6 +39,7 @@ module type TABLE = sig
   module TCP  : SUBTABLE with type t := t and type transport_channel = port * port
   module UDP  : SUBTABLE with type t := t and type transport_channel = port * port
   module ICMP : SUBTABLE with type t := t and type transport_channel = Cstruct.uint16
+
   val reset : t -> unit Lwt.t
   (** Remove all entries from the table. *)
 end

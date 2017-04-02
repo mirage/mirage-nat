@@ -66,7 +66,7 @@ module Constructors = struct
     packet
  
   let make_table_with_redirect ip_packet ~internal_xl ~internal_xl_port ~internal_client ~internal_client_port =
-    Rewriter.empty () >>= fun t ->
+    Rewriter.empty ~tcp_size:10 ~udp_size:10 ~icmp_size:10 >>= fun t ->
     Rewriter.add t ~now:0L ip_packet
       (internal_xl, internal_xl_port)
       (`Redirect (internal_client, internal_client_port))
@@ -75,7 +75,7 @@ module Constructors = struct
     | Ok () -> Lwt.return t
 
   let make_table_with_nat ip_packet ~xl ~xlport =
-    Rewriter.empty () >>= fun t ->
+    Rewriter.empty ~tcp_size:10 ~udp_size:10 ~icmp_size:10 >>= fun t ->
     Rewriter.add t ~now:0L ip_packet (xl, xlport) `NAT >|= function
     | Error e ->
       Alcotest.fail (Fmt.strf "Failed to insert test data into table structure: %a" Mirage_nat.pp_error e)
@@ -208,7 +208,7 @@ let test_add_nat_broadcast () =
   let broadcast = Constructors.full_packet ~payload ~proto:`TCP ~ttl:30 ~src
                     ~dst:broadcast_dst ~src_port ~dst_port in
   let open Rewriter in
-  empty () >>= fun t ->
+  Rewriter.empty ~tcp_size:10 ~udp_size:10 ~icmp_size:10 >>= fun t ->
   add ~now:0L t broadcast (xl, xlport) `NAT >|=
   Alcotest.check add_result "Ignore broadcast" (Error `Cannot_NAT) >>= fun () ->
   (* try just an ethernet frame *)
@@ -243,7 +243,7 @@ let add_many_entries how_many =
   let fixed_internal_ip = random_ipv4 () in
   let fixed_external_ip = random_ipv4 () in
   let open Rewriter in
-  empty () >>= fun t ->
+  Rewriter.empty ~tcp_size:how_many ~udp_size:how_many ~icmp_size:how_many >>= fun t ->
   let rec shove_entries = function
     | n when n <= 0 -> Lwt.return_unit
     | n ->
@@ -278,7 +278,7 @@ let add_many_entries how_many =
   shove_entries how_many
 
 let test_ping () =
-  Rewriter.empty () >>= fun t ->
+  Rewriter.empty ~tcp_size:10 ~udp_size:10 ~icmp_size:10 >>= fun t ->
   let payload = Cstruct.create 0 in
   let packet = Constructors.make_icmp ~src:"192.168.1.5" ~dst:"8.8.8.8" (`Echo_request (5, 9, payload)) ~ttl:64 in
   let endpoint = Ipaddr.V4.of_string_exn "82.1.1.8", 81 in
@@ -309,7 +309,7 @@ let dec_ttl (`IPv4 (ip, transport)) =
   `IPv4 (ip, transport)
 
 let test_icmp_error () =
-  Rewriter.empty () >>= fun t ->
+  Rewriter.empty ~tcp_size:10 ~udp_size:10 ~icmp_size:10 >>= fun t ->
   let payload = Cstruct.create 10 in
   let packet = Constructors.full_packet (* TCP packet to port 80 from internal machine *)
       ~payload

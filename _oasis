@@ -21,7 +21,7 @@ Library "mirage-nat-hashtable"
   Findlibname: hashtable
   FindlibParent: mirage-nat
   Modules: Mirage_nat_hashtable
-  BuildDepends: ipaddr, tcpip, cstruct, lwt, mirage-profile, mirage-nat
+  BuildDepends: ipaddr, tcpip, cstruct, lwt, mirage-profile, mirage-nat, lru
 
 Executable test_rewrite
   Build$: flag(tests)
