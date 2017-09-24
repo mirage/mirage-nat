@@ -9,11 +9,11 @@ dev-repo: "https://github.com/yomimono/mirage-nat.git"
 license: "ISC"
 
 build: [
-  ["./configure" "--prefix=%{prefix}%"]
-  [make]
+  ["jbuilder" "subst"] {pinned}
+  ["jbuilder" "build" "-p" name "-j" jobs]
 ]
 build-test: [
-  [make "test"]
+  [ "jbuilder" "runtest" "-p" name "-j" jobs ]
 ]
 depends: [
   "ipaddr"

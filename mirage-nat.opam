@@ -7,11 +7,11 @@ homepage: "https://github.com/yomimono/mirage-nat"
 bug-reports: "https://github.com/yomimono/mirage-nat/issues/"
 dev-repo: "https://github.com/yomimono/mirage-nat.git"
 license: "ISC"
-
 build: [
-  ["./configure" "--prefix=%{prefix}%"]
-  [make]
+  ["jbuilder" "subst"] {pinned}
+  ["jbuilder" "build" "-p" name "-j" jobs]
 ]
+
 depends: [
   "ipaddr"
   "cstruct"
@@ -20,7 +20,7 @@ depends: [
   "lwt"
   "rresult"
   "logs"
-  "ppx_deriving" {build}
-  "jbuilder" {build & >= "4.2" }
+  "ppx_deriving" {build & >= "4.2" }
+  "jbuilder" {build}
   "tcpip" { >= "3.0.0" }
 ]
