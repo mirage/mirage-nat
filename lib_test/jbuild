@@ -1,0 +1,10 @@
+(jbuild_version 1)
+
+(executables
+ ((names (test_rewrite))
+   (libraries (mirage-nat mirage-nat-hashtable alcotest logs lwt.unix logs.fmt))))
+
+(alias
+ ((name runtest)
+  (deps (test_rewrite.exe))
+  (action (run ${<}))))
