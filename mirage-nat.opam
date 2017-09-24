@@ -20,7 +20,6 @@ install: [make "install"]
 remove: [
   ["ocamlfind" "remove" "mirage-nat"]
   ["ocamlfind" "remove" "mirage-nat-hashtable"]
-  ["ocamlfind" "remove" "mirage-nat-irmin"]
 ]
 depends: [
   "ocamlfind" {build}
@@ -37,10 +36,4 @@ depends: [
   "ounit" {test}
   "alcotest" {test}
   "mirage-clock-unix" {test}
-]
-depopts: [
-  "irmin-network-datastores"
-]
-conflicts: [
-  "irmin-network-datastores" { <= "0.0.2" }
 ]
