@@ -1,0 +1,7 @@
+(jbuild_version 1)
+
+(library
+ ((name mirage_nat_lru)
+  (libraries (mirage-nat lru))
+  )
+)

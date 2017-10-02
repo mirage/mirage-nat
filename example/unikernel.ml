@@ -14,9 +14,9 @@ module Main
   = struct
 
   (* Use a NAT table implementation which expires entries in response
-     to memory pressure.  (See mirage-nat-hashtable's documentation for more
+     to memory pressure.  (See mirage-nat's documentation for more
      information on what this means.) *)
-  module Nat = Mirage_nat_hashtable
+  module Nat = Mirage_nat_lru
 
   (* configure logs, so we can use them later *)
   let log = Logs.Src.create "nat" ~doc:"NAT device"

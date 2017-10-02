@@ -26,7 +26,6 @@ let private_ipv4 = create_ipv4 private_ethernet private_arpv4
 
 let packages = [
   package "mirage-nat";
-  package "mirage-nat-hashtable";
 ]
 
 (* our unikernel needs to know about physical network, ethernet, arp, and ipv4

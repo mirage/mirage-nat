@@ -7,7 +7,7 @@ let packet_t = (module Nat_packet : Alcotest.TESTABLE with type t = Nat_packet.t
 let translate_result = Alcotest.result packet_t (Alcotest.of_pp Mirage_nat.pp_error)
 let add_result = Alcotest.(result unit (of_pp Mirage_nat.pp_error))
 
-module Rewriter = Mirage_nat_hashtable
+module Rewriter = Mirage_nat_lru
 
 module Default_values = struct
   let src = (ipv4_of_str "192.168.108.26")

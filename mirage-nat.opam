@@ -10,7 +10,9 @@ build: [
   ["jbuilder" "subst"] {pinned}
   ["jbuilder" "build" "-p" name "-j" jobs]
 ]
-
+build-test: [
+  ["jbuilder" "runtest" "-p" name "-j" jobs]
+]
 depends: [
   "ipaddr"
   "cstruct"
@@ -19,7 +21,10 @@ depends: [
   "lwt"
   "rresult"
   "logs"
+  "lru"
   "ppx_deriving" {build & >= "4.2" }
   "jbuilder" {build}
   "tcpip" { >= "3.0.0" }
+  "alcotest" {test}
+  "mirage-clock-unix" {test}
 ]
