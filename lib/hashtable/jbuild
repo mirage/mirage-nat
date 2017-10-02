@@ -1,8 +1,0 @@
-(jbuild_version 1)
-
-(library
- ((name mirage_nat_hashtable)
-  (public_name mirage-nat-hashtable)
-  (libraries (mirage-nat lru))
-  )
-)
