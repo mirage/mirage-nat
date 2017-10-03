@@ -22,47 +22,62 @@ module Main
   let log = Logs.Src.create "nat" ~doc:"NAT device"
   module Log = (val Logs.src_log log : Logs.LOG)
 
+  (* We'll need to make routing decisions on both the public and private
+     interfaces. *)
+  module Public_routing = Routing.Make(Log)(Public_arpv4)
+  module Private_routing = Routing.Make(Log)(Private_arpv4)
+
   (* the specific impls we're using show up as arguments to start. *)
   let start public_netif private_netif
             public_ethernet private_ethernet
             public_arpv4 private_arpv4
-            public_ipv4 private_ipv4 random =
+            public_ipv4 _private_ipv4 _random =
 
     (* in order to successfully translate, we have to send the packets we've
        changed.  define some convenience functions for sending via public and
        private interfaces so we don't have to think about ARP later, when we'll 
        be trying to think hard about translations. *)
     let output_public packet =
-      Public_arpv4.query public_arpv4 (Util.get_dst packet) >>= function
-      | Error e ->
-        Log.debug (fun f -> f "Could not send a packet from the public interface: %a"
-                      Public_arpv4.pp_error e); Lwt.return_unit
+      let gateway = Key_gen.public_ipv4_gateway () in
+      let network = fst @@ Key_gen.public_ipv4 () in
+      Public_routing.destination_mac network gateway public_arpv4 (Util.get_dst packet) >>= function
+      | Error `Local ->
+        Log.debug (fun f -> f "Could not send a packet from the public interface to the local network,\
+                                as a failure occurred on the ARP layer");
+        Lwt.return_unit
+      | Error `Gateway ->
+        Log.debug (fun f -> f "Could not send a packet from the public interface to the wider network,\
+                                as a failure occurred on the ARP layer");
+        Lwt.return_unit
       | Ok destination ->
         let frame = Util.ethernet_frame
             ~source:(Public_ethernet.mac public_ethernet)
             ~destination Ethif_wire.IPv4 in
-        Public_ipv4.writev public_ipv4 frame @@ Nat_packet.to_cstruct packet >>= function
+        Public_ethernet.writev public_ethernet (frame :: Nat_packet.to_cstruct packet) >>= function
         | Error e ->
-          Log.debug (fun f -> f"Failed to send packet from public interface: %a"
-                        Public_ipv4.pp_error e);
+          Log.debug (fun f -> f "Failed to send packet from public interface: %a"
+                        Public_ethernet.pp_error e);
           Lwt.return_unit
         | Ok () -> Lwt.return_unit
     in
 
     let output_private packet =
-      Private_arpv4.query private_arpv4 (Util.get_dst packet) >>= function
-      | Error e ->
-        Log.debug (fun f -> f "Could not send a packet from the private interface: %a"
-                      Private_arpv4.pp_error e); Lwt.return_unit
+      let network = fst @@ Key_gen.private_ipv4 () in
+      Private_routing.destination_mac network None private_arpv4 (Util.get_dst packet) >>= function
+      | Error _ ->
+        Log.debug (fun f -> f "Could not send a packet from the private interface to the local network,\
+                                as a failure occurred on the ARP layer");
+        Lwt.return_unit
       | Ok destination ->
         let frame = Util.ethernet_frame
             ~source:(Private_ethernet.mac private_ethernet)
             ~destination Ethif_wire.IPv4 in
-        Private_ipv4.writev private_ipv4 frame @@ Nat_packet.to_cstruct packet >>= function
+        Private_ethernet.writev private_ethernet (frame :: Nat_packet.to_cstruct packet) >>= function
         | Error e ->
-          Log.debug (fun f -> f"Failed to send packet from private interface: %a"
-                        Private_ipv4.pp_error e);
+          Log.debug (fun f -> f "Failed to send packet from private interface: %a"
+                        Private_ethernet.pp_error e);
           Lwt.return_unit
+        | Ok () -> Lwt.return_unit
     in
 
     (* when we see packets on the private interface,
@@ -72,6 +87,7 @@ module Main
        If there isn't, we should add one, then do as above.
     *)
     let rec ingest_private table packet =
+      Log.debug (fun f -> f "Private interface got a packet: %a" Nat_packet.pp packet);
       Nat.translate table packet >>= function
       | Ok packet -> output_public packet
       | Error `TTL_exceeded ->
@@ -88,7 +104,7 @@ module Main
       (* TODO: this may generate low-numbered source ports, which may be treated
          with suspicion by other nodes on the network *)
       let port = Cstruct.BE.get_uint16 (Random.generate 2) 0 in
-      Nat.add table ~now:0L packet  (public_ip, port) `NAT >>= function
+      Nat.add table ~now:0L packet (public_ip, port) `NAT >>= function
       | Error e ->
         Log.debug (fun f -> f "Failed to add a NAT rule: %a" Mirage_nat.pp_error e);
         Lwt.return_unit
@@ -99,7 +115,7 @@ module Main
        we only want to translate them and send them out over the private
        interface if a rule already exists.
        we shouldn't make new rules from public traffic. *)
-    let rec ingest_public table packet =
+    let ingest_public table packet =
       Nat.translate table packet >>= function
       | Ok packet -> output_private packet
       | Error `TTL_exceeded ->
