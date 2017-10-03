@@ -9,5 +9,5 @@ let ethernet_frame ~source ~destination ethertype =
 let get_dst (`IPv4 (packet, _) : Nat_packet.t) = packet.Ipv4_packet.dst
 
 let try_decompose f packet = match Nat_packet.of_ipv4_packet packet with
-  | Error e -> Lwt.return_unit
+  | Error _ -> Lwt.return_unit
   | Ok packet -> f packet

@@ -5,8 +5,8 @@ open Mirage
    backends, so we can get away with this indexes-as-numbers-as-strings
    silliness.
    See https://github.com/mirage/mirage/issues/645 *)
-let public_netif = netif "0"
-let private_netif = netif "1"
+let public_netif = netif ~group:"public" "0"
+let private_netif = netif ~group:"private" "1"
 
 (* build ethernet interfaces on top of those network interfaces *)
 let public_ethernet = etif public_netif
@@ -21,8 +21,8 @@ let private_arpv4 = farp private_ethernet
      this is possible, but the code is a bit too convoluted for a good example.
      for now, we'll use statically configured addresses on both interfaces. *)
 
-let public_ipv4 = create_ipv4 public_ethernet public_arpv4
-let private_ipv4 = create_ipv4 private_ethernet private_arpv4
+let public_ipv4 = create_ipv4 ~group:"public" public_ethernet public_arpv4
+let private_ipv4 = create_ipv4 ~group:"private" private_ethernet private_arpv4
 
 let packages = [
   package "mirage-nat";

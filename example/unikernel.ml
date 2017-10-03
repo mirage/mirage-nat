@@ -22,6 +22,11 @@ module Main
   let log = Logs.Src.create "nat" ~doc:"NAT device"
   module Log = (val Logs.src_log log : Logs.LOG)
 
+  (* We'll need to make routing decisions on both the public and private
+     interfaces. *)
+  module Public_routing = Routing.Make(Log)(Public_arpv4)
+  module Private_routing = Routing.Make(Log)(Private_arpv4)
+
   (* the specific impls we're using show up as arguments to start. *)
   let start public_netif private_netif
             public_ethernet private_ethernet
@@ -33,10 +38,17 @@ module Main
        private interfaces so we don't have to think about ARP later, when we'll 
        be trying to think hard about translations. *)
     let output_public packet =
-      Public_arpv4.query public_arpv4 (Util.get_dst packet) >>= function
-      | Error e ->
-        Log.debug (fun f -> f "Could not send a packet from the public interface: %a"
-                      Public_arpv4.pp_error e); Lwt.return_unit
+      let gateway = Key_gen.public_ipv4_gateway () in
+      let network = fst @@ Key_gen.public_ipv4 () in
+      Public_routing.destination_mac network gateway public_arpv4 (Util.get_dst packet) >>= function
+      | Error `Local ->
+        Log.debug (fun f -> f "Could not send a packet from the public interface to the local network,\
+                                as a failure occurred on the ARP layer");
+        Lwt.return_unit
+      | Error `Gateway ->
+        Log.debug (fun f -> f "Could not send a packet from the public interface to the wider network,\
+                                as a failure occurred on the ARP layer");
+        Lwt.return_unit
       | Ok destination ->
         let frame = Util.ethernet_frame
             ~source:(Public_ethernet.mac public_ethernet)
