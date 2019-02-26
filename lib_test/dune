@@ -1,0 +1,10 @@
+(executables
+ (names test_rewrite)
+ (libraries mirage-nat alcotest logs lwt.unix logs.fmt))
+
+(alias
+ (name runtest)
+ (deps
+  (:< test_rewrite.exe))
+ (action
+  (run %{<})))
