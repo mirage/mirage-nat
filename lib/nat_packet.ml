@@ -77,9 +77,9 @@ let of_ethernet_frame frame =
     Error (fun f -> Fmt.pf f "Failed to parse ethernet frame: %s@.%a" e Cstruct.hexdump_pp frame)
   | Ok (eth, packet) ->
     match eth.Ethernet_packet.ethertype with
-    | Ethernet_wire.ARP | Ethernet_wire.IPv6 ->
+    | `ARP | `IPv6 ->
       Error (fun f -> Fmt.pf f "Ignoring a non-IPv4 frame: %a" Cstruct.hexdump_pp frame)
-    | Ethernet_wire.IPv4 -> of_ipv4_packet packet
+    | `IPv4 -> of_ipv4_packet packet
 
 let icmp_to_cstruct = function
   | `Query payload -> payload

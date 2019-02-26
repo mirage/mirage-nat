@@ -52,7 +52,7 @@ module Main
       | Ok destination ->
         let frame = Util.ethernet_frame
             ~source:(Public_ethernet.mac public_ethernet)
-            ~destination Ethif_wire.IPv4 in
+            ~destination `IPv4 in
         Public_ethernet.writev public_ethernet (frame :: Nat_packet.to_cstruct packet) >>= function
         | Error e ->
           Log.debug (fun f -> f "Failed to send packet from public interface: %a"
@@ -71,7 +71,7 @@ module Main
       | Ok destination ->
         let frame = Util.ethernet_frame
             ~source:(Private_ethernet.mac private_ethernet)
-            ~destination Ethif_wire.IPv4 in
+            ~destination `IPv4 in
         Private_ethernet.writev private_ethernet (frame :: Nat_packet.to_cstruct packet) >>= function
         | Error e ->
           Log.debug (fun f -> f "Failed to send packet from private interface: %a"
