@@ -18,6 +18,7 @@ module Default_values = struct
 end
 
 module Constructors = struct
+  (* TODO: why is this in Constructors? *)
   let assert_checksum_correct raw =
     Format.printf "Check %a@." Cstruct.hexdump_pp raw;
     match Ipv4_packet.Unmarshal.of_cstruct raw with
@@ -32,6 +33,7 @@ module Constructors = struct
       Alcotest.(check bool) "Transport checksum correct" true
         (Ipv4_packet.Unmarshal.verify_transport_checksum ~ipv4_header ~transport_packet ~proto)
 
+  (* TODO: why is this in Constructors? *)
   let check_save_restore packet =
     let raw = Cstruct.concat @@ Nat_packet.to_cstruct packet in
     assert_checksum_correct raw;
@@ -60,7 +62,7 @@ module Constructors = struct
         }, payload)
     in
     let proto = Ipv4_packet.Marshal.protocol_to_int (proto :> Ipv4_packet.protocol) in
-    let ip = { Ipv4_packet.src; dst; proto; ttl; options = (Cstruct.create 0) } in
+    let ip = { Ipv4_packet.src; dst; proto; ttl; id=0x00; off = 0; options = (Cstruct.create 0) } in
     let packet = `IPv4 (ip, transport) in
     check_save_restore packet;
     packet
@@ -103,7 +105,7 @@ module Constructors = struct
           subheader = Icmpv4_packet.Unused;
         }, err
     in
-    let ip = {Ipv4_packet.src; dst; ttl; options = Cstruct.create 0; proto} in
+    let ip = {Ipv4_packet.src; dst; ttl; options = Cstruct.create 0; proto; id=0x00; off=0;} in
     `IPv4 (ip, `ICMP (icmp, payload))
 
 end
@@ -212,7 +214,7 @@ let test_add_nat_broadcast () =
   add ~now:0L t broadcast (xl, xlport) `NAT >|=
   Alcotest.check add_result "Ignore broadcast" (Error `Cannot_NAT) >>= fun () ->
   (* try just an ethernet frame *)
-  let e = Cstruct.create Ethif_wire.sizeof_ethernet in
+  let e = Cstruct.create Ethernet_wire.sizeof_ethernet in
   Nat_packet.of_ethernet_frame e |> Rresult.R.reword_error ignore
   |> Alcotest.(check (result packet_t unit)) "Bare ethernet frame" (Error ());
   Lwt.return ()
