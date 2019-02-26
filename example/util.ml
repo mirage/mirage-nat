@@ -3,8 +3,8 @@
    major release of mirage-tcpip. *)
 
 let ethernet_frame ~source ~destination ethertype =
-  let open Ethif_packet in
-  Ethif_packet.Marshal.make_cstruct { source; destination; ethertype }
+  let open Ethernet_packet in
+  Ethernet_packet.Marshal.make_cstruct { source; destination; ethertype }
 
 let get_dst (`IPv4 (packet, _) : Nat_packet.t) = packet.Ipv4_packet.dst
 
