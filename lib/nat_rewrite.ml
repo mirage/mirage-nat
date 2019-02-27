@@ -113,7 +113,7 @@ module Make(N : Mirage_nat.TABLE) = struct
   module ICMP = struct
     module Table = N.ICMP
 
-    type transport = [`ICMP of Icmpv4_packet.t * [`Query of Cstruct.t]]
+    type transport = [`ICMP of Icmpv4_packet.t * Cstruct.t]
 
     let expiry_ns = duration_of_seconds 120 (* RFC 5508: An ICMP Query session timer MUST NOT expire in less than 60 seconds *)
 
@@ -128,12 +128,12 @@ module Make(N : Mirage_nat.TABLE) = struct
       | Icmpv4_packet.Id_and_seq (id, _) -> Some id
       | _ -> None
 
-    let rewrite ~new_ip_header (`ICMP (icmp, `Query payload)) new_id =
+    let rewrite ~new_ip_header (`ICMP (icmp, payload)) new_id =
       match icmp.Icmpv4_packet.subheader with
       | Icmpv4_packet.Id_and_seq (_, seq) ->
         let new_icmp = {icmp with Icmpv4_packet.subheader = Icmpv4_packet.Id_and_seq (new_id, seq)} in
         Log.debug (fun f -> f "ICMP header rewritten to: %a" Icmpv4_packet.pp new_icmp);
-        `IPv4 (new_ip_header, `ICMP (new_icmp, `Query payload))
+        `IPv4 (new_ip_header, `ICMP (new_icmp, payload))
       | _ -> assert false (* We already checked this in [channel] *)
   end
 
@@ -152,35 +152,43 @@ module Make(N : Mirage_nat.TABLE) = struct
       | None ->
         Error `Untranslated
 
+  let icmp_error table orig_ip_pub ip icmp payload payload_len =
+    match Icmp_payload.get_ports orig_ip_pub payload with
+    | Error _ as e -> Lwt.return e
+    | Ok (proto, src_port, dst_port) ->
+      Log.debug (fun f -> f "ICMP error is for %a src_port=%d dst_port=%d"
+                    Ipv4_packet.pp orig_ip_pub src_port dst_port
+                );
+      (* Reverse src and dst because we want to treat this the same way we would
+         have treated a normal response. *)
+      let channel = orig_ip_pub.Ipv4_packet.dst, orig_ip_pub.Ipv4_packet.src, (dst_port, src_port) in
+      begin
+        match proto with
+        | `TCP -> N.TCP.lookup table channel
+        | `UDP -> N.UDP.lookup table channel
+      end >|= function
+      | Some (_expiry, (new_src, new_dst, (new_sport, new_dport))) ->
+        rewrite_ip ~src:new_src ~dst:new_dst ip >>!= fun ip ->
+        let orig_ip_priv = { orig_ip_pub with Ipv4_packet.dst = new_src; src = new_dst } in
+        let payload = Icmp_payload.with_ports payload (new_dport, new_sport) proto in
+        let ip_struct = Ipv4_packet.Marshal.make_cstruct orig_ip_priv ~payload_len in
+        let error_priv = Cstruct.concat [ip_struct; payload] in
+        Ok (`IPv4 (ip, (`ICMP (icmp, error_priv))))
+      | _ ->
+        Error `Untranslated
+
+
   let translate table packet =
     MProf.Trace.label "Nat_rewrite.translate";
     match packet with
     | `IPv4 (ip, (`TCP _ as transport)) -> translate2 table (module TCP) ip transport
     | `IPv4 (ip, (`UDP _ as transport)) -> translate2 table (module UDP) ip transport
-    | `IPv4 (ip, (`ICMP (_, `Query _) as transport)) -> translate2 table (module ICMP) ip transport
-    | `IPv4 (ip, `ICMP (icmp, `Error (orig_ip_pub, payload, payload_len))) ->
-      match Icmp_payload.get_ports orig_ip_pub payload with
-      | Error _ as e -> Lwt.return e
-      | Ok (proto, src_port, dst_port) ->
-        Log.debug (fun f -> f "ICMP error is for %a src_port=%d dst_port=%d"
-                     Ipv4_packet.pp orig_ip_pub src_port dst_port
-                 );
-        (* Reverse src and dst because we want to treat this the same way we would
-           have treated a normal response. *)
-        let channel = orig_ip_pub.Ipv4_packet.dst, orig_ip_pub.Ipv4_packet.src, (dst_port, src_port) in
-        begin
-          match proto with
-          | `TCP -> N.TCP.lookup table channel
-          | `UDP -> N.UDP.lookup table channel
-        end >|= function
-        | Some (_expiry, (new_src, new_dst, (new_sport, new_dport))) ->
-          rewrite_ip ~src:new_src ~dst:new_dst ip >>!= fun ip ->
-          let orig_ip_priv = { orig_ip_pub with Ipv4_packet.dst = new_src; src = new_dst } in
-          let payload = Icmp_payload.with_ports payload (new_dport, new_sport) proto in
-          let error_priv = `Error (orig_ip_priv, payload, payload_len) in
-          Ok (`IPv4 (ip, `ICMP (icmp, error_priv)))
-        | _ ->
-          Error `Untranslated
+    | `IPv4 (ip, (`ICMP (icmp,_) as transport)) when Nat_packet.icmp_type icmp = `Query -> translate2 table (module ICMP) ip transport
+    | `IPv4 (ip, `ICMP (icmp, payload)) ->
+      match Ipv4_packet.Unmarshal.of_cstruct payload with
+      | Error _ -> Lwt.return @@ Error `Untranslated
+      | Ok (orig_ip, data_start) ->
+        icmp_error table orig_ip ip icmp data_start (Cstruct.len payload)   
 
   let add table ~now packet (xl_host, xl_port) mode =
     let `IPv4 (ip_header, transport) = packet in
@@ -213,7 +221,7 @@ module Make(N : Mirage_nat.TABLE) = struct
       match transport with
       | `TCP _ as transport  -> add2 (module TCP) transport
       | `UDP _ as transport  -> add2 (module UDP) transport
-      | `ICMP (_, `Query _) as transport -> add2 (module ICMP) transport
-      | `ICMP (_, `Error _) -> Lwt.return (Error `Cannot_NAT)
+      | `ICMP (icmp, _) as transport when Nat_packet.icmp_type icmp = `Query -> add2 (module ICMP) transport
+      | `ICMP _ -> Lwt.return (Error `Cannot_NAT)
 
 end
