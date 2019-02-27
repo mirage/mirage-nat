@@ -1,15 +1,9 @@
 [@@@ocaml.warning "-39"]
 
-type icmp = [
-  | `Query of Cstruct.t
-  | `Error of Ipv4_packet.t * Cstruct.t * int (* Payload length *)
-]
-[@@deriving eq]
-
 type t =
   [`IPv4 of Ipv4_packet.t * [ `TCP of Tcp.Tcp_packet.t * Cstruct.t
                             | `UDP of Udp_packet.t * Cstruct.t
-                            | `ICMP of Icmpv4_packet.t * icmp
+                            | `ICMP of Icmpv4_packet.t * Cstruct.t
                             ]
   ]
 [@@deriving eq]
@@ -57,16 +51,7 @@ let of_ipv4_packet packet : (t, error) result =
       begin match Icmpv4_packet.Unmarshal.of_cstruct transport with
         | Error e ->
           Error (fun f -> Fmt.pf f "Failed to parse ICMP packet: %s@.%a" e Cstruct.hexdump_pp transport)
-        | Ok (header, payload) ->
-          match icmp_type header with
-          | `Query -> Ok (`IPv4 (ip, `ICMP (header, `Query payload)))
-          | `Error ->
-            match Ipv4_packet.Unmarshal.of_cstruct payload with
-            | Error e -> Error (fun f -> Fmt.pf f "Failed to parse ICMP error's payload: %s@\n%a"
-                                   e
-                                   Cstruct.hexdump_pp payload)
-            | Ok (orig_ip, data_start) ->
-              Ok (`IPv4 (ip, `ICMP (header, `Error (orig_ip, data_start, Cstruct.len payload))))
+        | Ok (header, payload) -> Ok (`IPv4 (ip, `ICMP (header, payload)))
       end
     | _ ->
       Error (fun f -> Fmt.pf f "Ignoring non-TCP/UDP packet: %a" Ipv4_packet.pp ip)
@@ -81,14 +66,8 @@ let of_ethernet_frame frame =
       Error (fun f -> Fmt.pf f "Ignoring a non-IPv4 frame: %a" Cstruct.hexdump_pp frame)
     | `IPv4 -> of_ipv4_packet packet
 
-let icmp_to_cstruct = function
-  | `Query payload -> payload
-  | `Error (ip, payload, payload_len) ->
-    let ip = Ipv4_packet.Marshal.make_cstruct ip ~payload_len in
-    Cstruct.concat [ip; payload]
-
 let decompose_transport = function
-  | `ICMP (_, icmp_payload) -> Icmpv4_wire.sizeof_icmpv4, (Cstruct.len @@ icmp_to_cstruct icmp_payload)
+  | `ICMP (_, icmp_payload) -> Icmpv4_wire.sizeof_icmpv4, (Cstruct.len icmp_payload)
   | `UDP (_, udp_payload) -> Udp_wire.sizeof_udp, (Cstruct.len udp_payload)
   | `TCP (tcp_header, tcp_payload) ->
     let options_length = Tcp.Options.lenv tcp_header.Tcp.Tcp_packet.options in
@@ -104,7 +83,6 @@ let to_cstruct ((`IPv4 (ip, transport)):t) =
   let transport =
     match transport with
     | `ICMP (icmp_header, payload) ->
-      let payload = icmp_to_cstruct payload in
       let transport_header = Icmpv4_packet.Marshal.make_cstruct icmp_header ~payload in
       Logs.debug (fun f -> f "ICMP header written: %a" Cstruct.hexdump_pp transport_header);
       [transport_header; payload]
@@ -143,7 +121,6 @@ let into_cstruct ((`IPv4 (ip, transport)):t) full_buffer =
     let payload_start = ip_header_len + transport_header_len in
     match transport with
     | `ICMP (icmp_header, payload) -> begin
-        let payload = icmp_to_cstruct payload in
         Cstruct.blit payload 0 full_buffer payload_start transport_payload_len;
         match Icmpv4_packet.Marshal.into_cstruct icmp_header ~payload (Cstruct.shift full_buffer ip_header_len) with
         | Error s -> Error (fun f -> Fmt.pf f "Error writing ICMPv4 packet: %s" s);
@@ -185,13 +162,7 @@ let into_cstruct ((`IPv4 (ip, transport)):t) full_buffer =
     Logs.debug (fun f -> f "IPv4 header written: %a" Cstruct.hexdump_pp (Cstruct.sub full_buffer 0 ip_header_len));
     Ok (written + ip_header_len)
 
-let pp_icmp f = function
-  | `Query payload -> Cstruct.hexdump_pp f payload
-  | `Error (ip, payload, payload_len) ->
-    Fmt.pf f "error for %a (payload len = %d) payload: %a"
-      Ipv4_packet.pp ip
-      payload_len
-      Cstruct.hexdump_pp payload
+let pp_icmp f payload = Cstruct.hexdump_pp f payload
 
 let pp_transport f = function
   | `ICMP (icmp, payload) ->
