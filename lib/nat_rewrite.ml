@@ -152,6 +152,31 @@ module Make(N : Mirage_nat.TABLE) = struct
       | None ->
         Error `Untranslated
 
+  let icmp_error table orig_ip_pub ip icmp payload payload_len =
+    match Icmp_payload.get_ports orig_ip_pub payload with
+    | Error _ as e -> Lwt.return e
+    | Ok (proto, src_port, dst_port) ->
+      Log.debug (fun f -> f "ICMP error is for %a src_port=%d dst_port=%d"
+                    Ipv4_packet.pp orig_ip_pub src_port dst_port
+                );
+      (* Reverse src and dst because we want to treat this the same way we would
+         have treated a normal response. *)
+      let channel = orig_ip_pub.Ipv4_packet.dst, orig_ip_pub.Ipv4_packet.src, (dst_port, src_port) in
+      begin
+        match proto with
+        | `TCP -> N.TCP.lookup table channel
+        | `UDP -> N.UDP.lookup table channel
+      end >|= function
+      | Some (_expiry, (new_src, new_dst, (new_sport, new_dport))) ->
+        rewrite_ip ~src:new_src ~dst:new_dst ip >>!= fun ip ->
+        let orig_ip_priv = { orig_ip_pub with Ipv4_packet.dst = new_src; src = new_dst } in
+        let payload = Icmp_payload.with_ports payload (new_dport, new_sport) proto in
+        let error_priv = `Error (orig_ip_priv, payload, payload_len) in
+        Ok (`IPv4 (ip, `ICMP (icmp, error_priv)))
+      | _ ->
+        Error `Untranslated
+
+
   let translate table packet =
     MProf.Trace.label "Nat_rewrite.translate";
     match packet with
@@ -159,28 +184,7 @@ module Make(N : Mirage_nat.TABLE) = struct
     | `IPv4 (ip, (`UDP _ as transport)) -> translate2 table (module UDP) ip transport
     | `IPv4 (ip, (`ICMP (_, `Query _) as transport)) -> translate2 table (module ICMP) ip transport
     | `IPv4 (ip, `ICMP (icmp, `Error (orig_ip_pub, payload, payload_len))) ->
-      match Icmp_payload.get_ports orig_ip_pub payload with
-      | Error _ as e -> Lwt.return e
-      | Ok (proto, src_port, dst_port) ->
-        Log.debug (fun f -> f "ICMP error is for %a src_port=%d dst_port=%d"
-                     Ipv4_packet.pp orig_ip_pub src_port dst_port
-                 );
-        (* Reverse src and dst because we want to treat this the same way we would
-           have treated a normal response. *)
-        let channel = orig_ip_pub.Ipv4_packet.dst, orig_ip_pub.Ipv4_packet.src, (dst_port, src_port) in
-        begin
-          match proto with
-          | `TCP -> N.TCP.lookup table channel
-          | `UDP -> N.UDP.lookup table channel
-        end >|= function
-        | Some (_expiry, (new_src, new_dst, (new_sport, new_dport))) ->
-          rewrite_ip ~src:new_src ~dst:new_dst ip >>!= fun ip ->
-          let orig_ip_priv = { orig_ip_pub with Ipv4_packet.dst = new_src; src = new_dst } in
-          let payload = Icmp_payload.with_ports payload (new_dport, new_sport) proto in
-          let error_priv = `Error (orig_ip_priv, payload, payload_len) in
-          Ok (`IPv4 (ip, `ICMP (icmp, error_priv)))
-        | _ ->
-          Error `Untranslated
+   icmp_error table orig_ip_pub ip icmp payload payload_len    
 
   let add table ~now packet (xl_host, xl_port) mode =
     let `IPv4 (ip_header, transport) = packet in
