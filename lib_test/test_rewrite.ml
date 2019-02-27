@@ -75,7 +75,7 @@ module Constructors = struct
     let packet = `IPv4 (ip, transport) in
     check_save_restore packet;
     packet
- 
+
   let make_table_with_redirect ip_packet ~internal_xl ~internal_xl_port ~internal_client ~internal_client_port =
     Rewriter.empty ~tcp_size:10 ~udp_size:10 ~icmp_size:10 >>= fun t ->
     Rewriter.add t ~now:0L ip_packet
@@ -102,13 +102,14 @@ module Constructors = struct
           Icmpv4_packet.ty = Icmpv4_wire.Echo_request;
           code = 0;
           subheader = Icmpv4_packet.Id_and_seq (id, seq)
-        }, `Query payload
+        }, payload
       | `Echo_reply (id, seq, payload) -> {
           Icmpv4_packet.ty = Icmpv4_wire.Echo_reply;
           code = 0;
           subheader = Icmpv4_packet.Id_and_seq (id, seq)
-        }, `Query payload
-      | `Unreachable err -> {
+        }, payload
+      | `Unreachable err ->
+        {
           Icmpv4_packet.ty = Icmpv4_wire.Destination_unreachable;
           code = 1;
           subheader = Icmpv4_packet.Unused;
@@ -313,15 +314,87 @@ let icmp_error_payload packet =
   | Error e -> Alcotest.fail e
   | Ok (ip, full_transport) ->
     let trunc_transport = Cstruct.sub full_transport 0 8 in
-    `Error (ip, trunc_transport, Cstruct.len full_transport)
+    let payload_len = Cstruct.len full_transport in
+    Cstruct.concat [Ipv4_packet.Marshal.make_cstruct ~payload_len ip; trunc_transport]
 
 let dec_ttl (`IPv4 (ip, transport)) =
   let ip = Ipv4_packet.{ip with ttl = ip.ttl - 1} in
   `IPv4 (ip, transport)
 
-let test_icmp_error () =
+let test_ping_icmp_error () =
   Rewriter.empty ~tcp_size:10 ~udp_size:10 ~icmp_size:10 >>= fun t ->
-  let payload = Cstruct.create 10 in
+  let payload = Cstruct.create 0 in
+  let packet = Constructors.make_icmp ~src:"192.168.1.5" ~dst:"8.8.8.8" (`Echo_request (5, 9, payload)) ~ttl:64 in
+  let nat_ip = Ipaddr.V4.of_string_exn "82.1.1.8" in
+  let endpoint = nat_ip, 81 in
+  (* Add rule *)
+  Rewriter.add ~now:0L t packet endpoint `NAT
+  >|= Alcotest.check add_result "Add ICMP rule" (Ok ()) >>= fun () ->
+  (* Translate outgoing request *)
+  let expected = Constructors.make_icmp ~src:"82.1.1.8" ~dst:"8.8.8.8" (`Echo_request (81, 9, payload)) ~ttl:63 in
+  Rewriter.translate t packet
+  >|= Alcotest.check translate_result "Apply NAT rule" (Ok expected) >>= fun () ->
+  (* Translate reply *)
+  let error_reply_ext = (* ICMP error from an intermediate router to NAT *)
+    let error = `Unreachable (icmp_error_payload expected) in
+    Constructors.make_icmp ~dst:"82.1.1.8" ~src:"8.8.8.1" error ~ttl:64 in
+  let error_reply_int = (* ICMP error from intermediate router to internal machine *)
+    let error = `Unreachable (icmp_error_payload (dec_ttl packet)) in
+    Constructors.make_icmp ~dst:"192.168.1.5" ~src:"8.8.8.1" error ~ttl:63 in
+  Rewriter.translate t error_reply_ext
+  >|= Alcotest.check translate_result "Map ICMP (ICMP error)" (Ok error_reply_int) >>= fun () ->
+  Lwt.return ()
+
+let test_udp_icmp_error () =
+  let replace_udp_checksum ~new_checksum
+      (`IPv4 (_, (`ICMP (_, icmp_internal_payload)))) =
+    let transport_header = Cstruct.shift icmp_internal_payload
+        (((Ipv4_wire.get_ipv4_hlen_version icmp_internal_payload) land 0x0f) * 4)
+    in
+    Udp_wire.set_udp_checksum transport_header new_checksum;
+  in
+  Rewriter.empty ~tcp_size:10 ~udp_size:10 ~icmp_size:10 >>= fun t ->
+  let payload = Cstruct.create 0 in
+  let packet = Constructors.full_packet (* UDP packet to port 80 from internal machine *)
+      ~payload
+      ~proto:`UDP
+      ~src:(Ipaddr.V4.of_string_exn "192.168.1.5")
+      ~dst:(Ipaddr.V4.of_string_exn "8.8.8.8")
+      ~src_port:3210
+      ~dst_port:80
+      ~ttl:64 in
+  let nat_ip = Ipaddr.V4.of_string_exn "82.1.1.8" in
+  let endpoint = nat_ip, 81 in
+  (* Add rule *)
+  Rewriter.add ~now:0L t packet endpoint `NAT
+  >|= Alcotest.check add_result "Add UDP rule" (Ok ()) >>= fun () ->
+  (* Translate outgoing request *)
+  let expected = Constructors.full_packet       (* UDP packet to port 80 from NAT *)
+      ~payload
+      ~proto:`UDP
+      ~src:(Ipaddr.V4.of_string_exn "82.1.1.8")
+      ~dst:(Ipaddr.V4.of_string_exn "8.8.8.8")
+      ~src_port:81
+      ~dst_port:80
+      ~ttl:63 in
+  Rewriter.translate t packet
+  >|= Alcotest.check translate_result "Apply NAT rule" (Ok expected) >>= fun () ->
+  (* Translate reply *)
+  let error_reply_ext = (* ICMP error from an intermediate router to NAT *)
+    let error = `Unreachable (icmp_error_payload expected) in
+    Constructors.make_icmp ~dst:"82.1.1.8" ~src:"8.8.8.1" error ~ttl:64 in
+  (* ICMP error from intermediate router to internal machine *)
+  let error_reply_int =
+    let error = `Unreachable (icmp_error_payload (dec_ttl packet)) in
+    Constructors.make_icmp ~dst:"192.168.1.5" ~src:"8.8.8.1" error ~ttl:63 in
+  replace_udp_checksum ~new_checksum:0x9c24 error_reply_int;
+  Rewriter.translate t error_reply_ext
+  >|= Alcotest.check translate_result "Map UDP (ICMP error)" (Ok error_reply_int) >>= fun () ->
+  Lwt.return ()
+
+let test_tcp_icmp_error () =
+  Rewriter.empty ~tcp_size:10 ~udp_size:10 ~icmp_size:10 >>= fun t ->
+  let payload = Cstruct.create 1000 in
   let packet = Constructors.full_packet (* TCP packet to port 80 from internal machine *)
       ~payload
       ~proto:`TCP
@@ -354,7 +427,7 @@ let test_icmp_error () =
     let error = `Unreachable (icmp_error_payload (dec_ttl packet)) in
     Constructors.make_icmp ~dst:"192.168.1.5" ~src:"8.8.8.8" error ~ttl:63 in
   Rewriter.translate t error_reply_ext
-  >|= Alcotest.check translate_result "Map ICMP error" (Ok error_reply_int) >>= fun () ->
+  >|= Alcotest.check translate_result "Map TCP (ICMP error)" (Ok error_reply_int) >>= fun () ->
   Lwt.return ()
 
 let lwt_run f () = Lwt_main.run (f ())
@@ -369,7 +442,9 @@ let add_nat = [
   "add_nat makes entries",            `Quick, lwt_run test_add_nat_valid_pkt;
   "add_nat refuses broadcast frames", `Quick, lwt_run test_add_nat_broadcast;
   "add_nat for ping",                 `Quick, lwt_run test_ping;
-  "add_nat for ICMP error",           `Quick, lwt_run test_icmp_error;
+  "add_nat for ping ICMP error",      `Quick, lwt_run test_ping_icmp_error;
+  "add_nat for ICMP error with UDP",  `Quick, lwt_run test_udp_icmp_error;
+  "add_nat for ICMP error with TCP",  `Quick, lwt_run test_tcp_icmp_error;
 ]
 
 let add_redirect = [
