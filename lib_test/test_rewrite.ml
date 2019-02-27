@@ -102,13 +102,14 @@ module Constructors = struct
           Icmpv4_packet.ty = Icmpv4_wire.Echo_request;
           code = 0;
           subheader = Icmpv4_packet.Id_and_seq (id, seq)
-        }, `Query payload
+        }, payload
       | `Echo_reply (id, seq, payload) -> {
           Icmpv4_packet.ty = Icmpv4_wire.Echo_reply;
           code = 0;
           subheader = Icmpv4_packet.Id_and_seq (id, seq)
-        }, `Query payload
-      | `Unreachable err -> {
+        }, payload
+      | `Unreachable err -> 
+        {
           Icmpv4_packet.ty = Icmpv4_wire.Destination_unreachable;
           code = 1;
           subheader = Icmpv4_packet.Unused;
@@ -313,7 +314,8 @@ let icmp_error_payload packet =
   | Error e -> Alcotest.fail e
   | Ok (ip, full_transport) ->
     let trunc_transport = Cstruct.sub full_transport 0 8 in
-    `Error (ip, trunc_transport, Cstruct.len full_transport)
+    let payload_len = Cstruct.len full_transport in
+    Cstruct.concat [Ipv4_packet.Marshal.make_cstruct ~payload_len ip; trunc_transport]
 
 let dec_ttl (`IPv4 (ip, transport)) =
   let ip = Ipv4_packet.{ip with ttl = ip.ttl - 1} in
