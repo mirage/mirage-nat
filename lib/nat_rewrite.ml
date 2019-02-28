@@ -159,31 +159,84 @@ module Make(N : Mirage_nat.TABLE) = struct
         Log.err (fun m -> m "No rule matching channel");
         Error `Untranslated
 
-  (* which payload is referred to by payload_len, and what is that value used for? *)
-  (* payload_len is the length of the payload of the *encapsulated* IPv4 packet.
-   it is used to rewrite the encapsulated IPv4 packet's header correctly. *)
-  let icmp_error table orig_ip_pub ip icmp payload encapsulated_ip_payload_len =
-    match Icmp_payload.get_ports orig_ip_pub payload with
+(* given parameters of an ICMP error message with an embedded IPv4 packet (with transport header),
+   translate the error message using the relevant NAT rules so it can be delivered to the client
+   on our local network.
+
+   The message looks like:
+
+   +------------------------------------------------------+
+   | Outer IPv4 header: external src -> public NAT IP     |
+   +------------------------------------------------------+
+   |       ICMP header: this is an error message          |
+   +------------------------------------------------------+
+   | Inner IPV4 header: public NAT IP -> external dst     |
+   |    note that the inner IPv4 payload is likely        |
+   |    truncated, but the inner IPv4 header's length     |
+   |    field will reflect the original packet size       |
+   +------------------------------------------------------+
+   | TCP/UDP header: public NAT srcport -> external dport |
+   +------------------------------------------------------+
+
+   We want to translate it to:
+
+   +------------------------------------------------------+
+   | Outer IPv4 header: external src -> private client IP |
+   +------------------------------------------------------+
+   |       ICMP header: this is an error message          |
+   +------------------------------------------------------+
+   | Inner IPV4 header: private client IP -> external dst |
+   |    note that the inner IPv4 payload is likely        |
+   |    truncated, but the inner IPv4 header's length     |
+   |    field will reflect the original packet size       |
+   +------------------------------------------------------+
+   | TCP/UDP header: client srcport -> external dport     |
+   +------------------------------------------------------+
+
+   *)
+  let icmp_error table ~outer_ip ~icmp ~icmp_payload ~inner_ip ~encapsulated_transport_header =
+    match Icmp_payload.get_ports inner_ip encapsulated_transport_header with
     | Error _ as e -> Lwt.return e
     | Ok (proto, src_port, dst_port) ->
       Log.debug (fun f -> f "ICMP error is for %a src_port=%d dst_port=%d"
-                    Ipv4_packet.pp orig_ip_pub src_port dst_port
+                    Ipv4_packet.pp outer_ip src_port dst_port
                 );
-      (* Reverse src and dst because we want to treat this the same way we would
-         have treated a normal response. *)
-      let channel = orig_ip_pub.Ipv4_packet.dst, orig_ip_pub.Ipv4_packet.src, (dst_port, src_port) in
+      (* When checking for an associated entry in the NAT table, we want to use the port information
+         from the encapsulated transport header, along with the IP information. *)
+      (* It is possible to get the IP information either from the outer IPv4 header (external source to public NAT ip),
+         or from the inner header (public NAT ip to external source). *)
+      (* However the port info is only available in the encapsulated transport header, where it will be reversed from the
+         direction of the outer IPv4 packet's source and destination. *)
+      let channel = outer_ip.Ipv4_packet.src, outer_ip.Ipv4_packet.dst, (dst_port, src_port) in
       begin
         match proto with
         | `TCP -> N.TCP.lookup table channel
         | `UDP -> N.UDP.lookup table channel
       end >|= function
       | Some (_expiry, (new_src, new_dst, (new_sport, new_dport))) ->
-        rewrite_ip ~src:new_src ~dst:new_dst ip >>!= fun ip ->
-        let orig_ip_priv = { orig_ip_pub with Ipv4_packet.dst = new_src; src = new_dst } in
-        let payload = Icmp_payload.with_ports payload (new_dport, new_sport) proto in
-        let ip_struct = Ipv4_packet.Marshal.make_cstruct orig_ip_priv ~payload_len:encapsulated_ip_payload_len in
-        let error_priv = Cstruct.concat [ip_struct; payload] in
-        Ok (`IPv4 (ip, (`ICMP (icmp, error_priv))))
+        (* translate both the inner and outer IPv4 headers *)
+        (* but only call rewrite_ip on the outer header, since we don't want to decrement the TTL in the inner one *)
+        rewrite_ip ~src:new_src ~dst:new_dst outer_ip >>!= fun translated_outer_ip ->
+        (* consider the diagram above for a visual explanation of why we rewrite the inner IP packet's source
+           field with the new_dst, and the destination with new_src *)
+        let translated_inner_ip = { inner_ip with Ipv4_packet.src = new_dst; dst = new_src } in
+        (* then, change the encapsulated transport header's port numbers *)
+        let translated_encapsulated_transport_payload =
+          Icmp_payload.with_ports encapsulated_transport_header (new_dport, new_sport) proto in
+        (* in order to preserve the IPv4 total length from the original message (which might be incorrect
+           due to truncation of the ICMP error message), retrieve this value from the ICMP payload,
+           which is also the inner IP header.  This is replicating some non-exposed logic from
+           the tcpip library's Ipv4_packet module. *)
+        let original_encapsulated_ipv4_header_length = 20 + (Cstruct.len inner_ip.options) in
+        let original_encapsulated_ipv4_total_length = Ipv4_wire.get_ipv4_len icmp_payload in
+        let original_encapsulated_ipv4_payload_length = original_encapsulated_ipv4_total_length - original_encapsulated_ipv4_header_length in
+        Log.debug (fun f -> f "Translated ICMP error message payload (an encapsulated IPv4 packet) \
+                               claims this IPv4 payload length: %x" original_encapsulated_ipv4_payload_length);
+        (* Now we can reassemble the translated inner packet with the correct IP and port information. *)
+        let inner_ip_struct = Ipv4_packet.Marshal.make_cstruct translated_inner_ip ~payload_len:original_encapsulated_ipv4_payload_length in
+        let translated_icmp_payload = Cstruct.concat [inner_ip_struct; translated_encapsulated_transport_payload] in
+        (* Encapsulate the inner packet in the translated outer packet. *)
+        Ok (`IPv4 (translated_outer_ip, (`ICMP (icmp, translated_icmp_payload))))
       | _ ->
         Log.err (fun m -> m "untranslated in icmp_error, no matching rule in the tables");
         Error `Untranslated
@@ -195,14 +248,15 @@ module Make(N : Mirage_nat.TABLE) = struct
     | `IPv4 (ip, (`TCP _ as transport)) -> translate2 table (module TCP) ip transport
     | `IPv4 (ip, (`UDP _ as transport)) -> translate2 table (module UDP) ip transport
     | `IPv4 (ip, (`ICMP (icmp,_) as transport)) when Nat_packet.icmp_type icmp = `Query -> translate2 table (module ICMP) ip transport
-    | `IPv4 (ip, `ICMP (icmp, payload)) ->
-      match Ipv4_packet.Unmarshal.header_of_cstruct payload with
+    | `IPv4 (outer_ip, `ICMP (icmp, icmp_payload)) ->
+      match Ipv4_packet.Unmarshal.header_of_cstruct icmp_payload with
       | Error _ -> 
-        Log.err (fun m -> m "Trying to read ip packet, does not parse");
+        Log.err (fun m -> m "Failed to read encapsulated IPv4 packet in ICMP payload: does not parse");
         Lwt.return @@ Error `Untranslated
-      | Ok (orig_ip, data_start) ->
-        let transport = Cstruct.shift payload data_start in
-        icmp_error table orig_ip ip icmp transport (Cstruct.len transport)   
+      | Ok (inner_ip, inner_untranslated_ip_payload (* also, start of transport header for encapsulated packet *)) ->
+        let encapsulated_transport_header = Cstruct.shift icmp_payload inner_untranslated_ip_payload in
+        Log.debug (fun f -> f "Inner, untranslated, encapsulated transport header: %a" Cstruct.hexdump_pp encapsulated_transport_header);
+        icmp_error table ~outer_ip ~inner_ip ~icmp ~icmp_payload ~encapsulated_transport_header
 
   let add table ~now packet (xl_host, xl_port) mode =
     let `IPv4 (ip_header, transport) = packet in
