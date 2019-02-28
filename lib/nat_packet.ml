@@ -30,7 +30,7 @@ let icmp_type header =
   | Destination_unreachable -> `Error
 
 let of_ipv4_packet packet : (t, error) result =
-  match Ipv4_packet.Unmarshal.of_cstruct packet with
+  match Ipv4_packet.Unmarshal.of_cstruct ~truncation_ok:false packet with
   | Error e ->
     Error (fun f -> Fmt.pf f "Failed to parse IPv4 packet: %s@.%a" e Cstruct.hexdump_pp packet)
   | Ok (ip, transport) ->

@@ -185,10 +185,10 @@ module Make(N : Mirage_nat.TABLE) = struct
     | `IPv4 (ip, (`UDP _ as transport)) -> translate2 table (module UDP) ip transport
     | `IPv4 (ip, (`ICMP (icmp,_) as transport)) when Nat_packet.icmp_type icmp = `Query -> translate2 table (module ICMP) ip transport
     | `IPv4 (ip, `ICMP (icmp, payload)) ->
-      match Ipv4_packet.Unmarshal.of_cstruct payload with
+      match Ipv4_packet.Unmarshal.of_cstruct ~truncation_ok:true payload with
       | Error _ -> Lwt.return @@ Error `Untranslated
       | Ok (orig_ip, data_start) ->
-        icmp_error table orig_ip ip icmp data_start (Cstruct.len payload)   
+        icmp_error table orig_ip ip icmp data_start 
 
   let add table ~now packet (xl_host, xl_port) mode =
     let `IPv4 (ip_header, transport) = packet in

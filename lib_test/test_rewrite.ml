@@ -21,7 +21,7 @@ module Constructors = struct
   (* TODO: why is this in Constructors? *)
   let assert_checksum_correct raw =
     Format.printf "Check %a@." Cstruct.hexdump_pp raw;
-    match Ipv4_packet.Unmarshal.of_cstruct raw with
+    match Ipv4_packet.Unmarshal.of_cstruct ~truncation_ok:false raw with
     | Error e -> Alcotest.fail (Fmt.strf "assert_checksum failed: %s" e)
     | Ok (ipv4_header, transport_packet) ->
       Printf.printf "ipv4_header len = %d\n" (Cstruct.len raw - Cstruct.len transport_packet);
@@ -301,7 +301,7 @@ let test_ping () =
 
 let icmp_error_payload packet =
   let raw = Cstruct.concat (Nat_packet.to_cstruct packet) in
-  match Ipv4_packet.Unmarshal.of_cstruct raw with
+  match Ipv4_packet.Unmarshal.of_cstruct ~truncation_ok:true raw with
   | Error e -> Alcotest.fail e
   | Ok (ip, full_transport) ->
     let trunc_transport = Cstruct.sub full_transport 0 8 in
