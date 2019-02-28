@@ -16,15 +16,13 @@ let rewrite_ip ~src ~dst ip =
 
 module Icmp_payload = struct
   let get_ports ip payload =
-    if Cstruct.len payload < 8 then ( 
-      Log.err (fun m -> m "Payload too short to analyze");
+    if Cstruct.len payload < 8 then (
+      Log.debug (fun m -> m "Payload too short to analyze");
       Error `Untranslated)
     else match Ipv4_packet.Unmarshal.int_to_protocol ip.Ipv4_packet.proto with
       | Some `UDP -> Ok (`UDP, Udp_wire.get_udp_source_port payload, Udp_wire.get_udp_dest_port payload)
       | Some `TCP -> Ok (`TCP, Tcp.Tcp_wire.get_tcp_src_port payload, Tcp.Tcp_wire.get_tcp_dst_port payload)
-      | _ -> 
-        Log.err (fun m -> m "default case in get_ports, we have icmp packet that contains ip packet not udp/tcp");
-        Error `Untranslated
+      | _ -> Error `Untranslated
 
   let dup src =
     let len = Cstruct.len src in
@@ -127,7 +125,7 @@ module Make(N : Mirage_nat.TABLE) = struct
 
     let redirect_rule _id ~final_endpoint:_ _xl_id = Error `Cannot_NAT (* mirage-nat's [`Redirect] is a port-based operation *)
 
-    let channel (`ICMP (x, _)) = 
+    let channel (`ICMP (x, _)) =
       match x.Icmpv4_packet.subheader with
       | Icmpv4_packet.Id_and_seq (id, _) -> Some id
       | _ -> None
@@ -145,7 +143,7 @@ module Make(N : Mirage_nat.TABLE) = struct
 
   let translate2 table (type t) (module P : PROTOCOL with type transport = t) ip (transport:P.transport) =
     match P.channel transport with
-    | None -> 
+    | None ->
       Log.err (fun m -> m "No transport channel");
       Lwt.return (Error `Untranslated)
     | Some transport_channel ->
@@ -230,15 +228,12 @@ module Make(N : Mirage_nat.TABLE) = struct
         let original_encapsulated_ipv4_header_length = 20 + (Cstruct.len inner_ip.options) in
         let original_encapsulated_ipv4_total_length = Ipv4_wire.get_ipv4_len icmp_payload in
         let original_encapsulated_ipv4_payload_length = original_encapsulated_ipv4_total_length - original_encapsulated_ipv4_header_length in
-        Log.debug (fun f -> f "Translated ICMP error message payload (an encapsulated IPv4 packet) \
-                               claims this IPv4 payload length: %x" original_encapsulated_ipv4_payload_length);
         (* Now we can reassemble the translated inner packet with the correct IP and port information. *)
         let inner_ip_struct = Ipv4_packet.Marshal.make_cstruct translated_inner_ip ~payload_len:original_encapsulated_ipv4_payload_length in
         let translated_icmp_payload = Cstruct.concat [inner_ip_struct; translated_encapsulated_transport_payload] in
         (* Encapsulate the inner packet in the translated outer packet. *)
         Ok (`IPv4 (translated_outer_ip, (`ICMP (icmp, translated_icmp_payload))))
       | _ ->
-        Log.err (fun m -> m "untranslated in icmp_error, no matching rule in the tables");
         Error `Untranslated
 
 
@@ -250,12 +245,11 @@ module Make(N : Mirage_nat.TABLE) = struct
     | `IPv4 (ip, (`ICMP (icmp,_) as transport)) when Nat_packet.icmp_type icmp = `Query -> translate2 table (module ICMP) ip transport
     | `IPv4 (outer_ip, `ICMP (icmp, icmp_payload)) ->
       match Ipv4_packet.Unmarshal.header_of_cstruct icmp_payload with
-      | Error _ -> 
-        Log.err (fun m -> m "Failed to read encapsulated IPv4 packet in ICMP payload: does not parse");
+      | Error _ ->
+        Log.debug (fun m -> m "Failed to read encapsulated IPv4 packet in ICMP payload: does not parse");
         Lwt.return @@ Error `Untranslated
       | Ok (inner_ip, inner_untranslated_ip_payload (* also, start of transport header for encapsulated packet *)) ->
         let encapsulated_transport_header = Cstruct.shift icmp_payload inner_untranslated_ip_payload in
-        Log.debug (fun f -> f "Inner, untranslated, encapsulated transport header: %a" Cstruct.hexdump_pp encapsulated_transport_header);
         icmp_error table ~outer_ip ~inner_ip ~icmp ~icmp_payload ~encapsulated_transport_header
 
   let add table ~now packet (xl_host, xl_port) mode =
