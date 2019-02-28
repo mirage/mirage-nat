@@ -16,11 +16,15 @@ let rewrite_ip ~src ~dst ip =
 
 module Icmp_payload = struct
   let get_ports ip payload =
-    if Cstruct.len payload < 8 then Error `Untranslated
+    if Cstruct.len payload < 8 then ( 
+      Log.err (fun m -> m "Payload too short to analyze");
+      Error `Untranslated)
     else match Ipv4_packet.Unmarshal.int_to_protocol ip.Ipv4_packet.proto with
       | Some `UDP -> Ok (`UDP, Udp_wire.get_udp_source_port payload, Udp_wire.get_udp_dest_port payload)
       | Some `TCP -> Ok (`TCP, Tcp.Tcp_wire.get_tcp_src_port payload, Tcp.Tcp_wire.get_tcp_dst_port payload)
-      | _ -> Error `Untranslated
+      | _ -> 
+        Log.err (fun m -> m "default case in get_ports, we have icmp packet that contains ip packet not udp/tcp");
+        Error `Untranslated
 
   let dup src =
     let len = Cstruct.len src in
@@ -141,7 +145,9 @@ module Make(N : Mirage_nat.TABLE) = struct
 
   let translate2 table (type t) (module P : PROTOCOL with type transport = t) ip (transport:P.transport) =
     match P.channel transport with
-    | None -> Lwt.return (Error `Untranslated)
+    | None -> 
+      Log.err (fun m -> m "No transport channel");
+      Lwt.return (Error `Untranslated)
     | Some transport_channel ->
       let src = ip.Ipv4_packet.src in
       let dst = ip.Ipv4_packet.dst in
@@ -150,6 +156,7 @@ module Make(N : Mirage_nat.TABLE) = struct
         rewrite_ip ~src ~dst ip >>!= fun new_ip_header ->
         Ok (P.rewrite ~new_ip_header transport new_transport_channel)
       | None ->
+        Log.err (fun m -> m "No rule matching channel");
         Error `Untranslated
 
   let icmp_error table orig_ip_pub ip icmp payload payload_len =
@@ -175,6 +182,7 @@ module Make(N : Mirage_nat.TABLE) = struct
         let error_priv = Cstruct.concat [ip_struct; payload] in
         Ok (`IPv4 (ip, (`ICMP (icmp, error_priv))))
       | _ ->
+        Log.err (fun m -> m "untranslated in icmp_error, no matching rule in the tables");
         Error `Untranslated
 
 
@@ -185,10 +193,13 @@ module Make(N : Mirage_nat.TABLE) = struct
     | `IPv4 (ip, (`UDP _ as transport)) -> translate2 table (module UDP) ip transport
     | `IPv4 (ip, (`ICMP (icmp,_) as transport)) when Nat_packet.icmp_type icmp = `Query -> translate2 table (module ICMP) ip transport
     | `IPv4 (ip, `ICMP (icmp, payload)) ->
-      match Ipv4_packet.Unmarshal.of_cstruct payload with
-      | Error _ -> Lwt.return @@ Error `Untranslated
+      match Ipv4_packet.Unmarshal.header_of_cstruct payload with
+      | Error _ -> 
+        Log.err (fun m -> m "Trying to read ip packet, does not parse");
+        Lwt.return @@ Error `Untranslated
       | Ok (orig_ip, data_start) ->
-        icmp_error table orig_ip ip icmp data_start (Cstruct.len payload)   
+        let transport = Cstruct.shift payload data_start in
+        icmp_error table orig_ip ip icmp transport (Cstruct.len payload)   
 
   let add table ~now packet (xl_host, xl_port) mode =
     let `IPv4 (ip_header, transport) = packet in
