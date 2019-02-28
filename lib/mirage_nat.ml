@@ -9,16 +9,10 @@ let pp_error f = function
   | `Untranslated -> Fmt.string f "Packet not translated"
   | `TTL_exceeded -> Fmt.string f "TTL exceeded"
 
-type time = int64
-
-module type CLOCK = Mirage_clock_lwt.MCLOCK
-
-module type TIME = Mirage_time_lwt.S
-
 module type S = sig
   type t
   val translate : t -> Nat_packet.t -> (Nat_packet.t, [> `Untranslated | `TTL_exceeded]) result Lwt.t
-  val add : t -> now:time -> Nat_packet.t -> endpoint -> [`NAT | `Redirect of endpoint] -> (unit, [> `Overlap | `Cannot_NAT]) result Lwt.t
+  val add : t -> Nat_packet.t -> endpoint -> [`NAT | `Redirect of endpoint] -> (unit, [> `Overlap | `Cannot_NAT]) result Lwt.t
   val reset : t -> unit Lwt.t
 end
 
@@ -28,8 +22,8 @@ module type SUBTABLE = sig
   type transport_channel
   type channel = Ipaddr.V4.t * Ipaddr.V4.t * transport_channel
 
-  val lookup : t -> channel -> (time * channel) option Lwt.t
-  val insert : t -> expiry:time -> (channel * channel) list -> (unit, [> `Overlap]) result Lwt.t
+  val lookup : t -> channel -> channel option Lwt.t
+  val insert : t -> (channel * channel) list -> (unit, [> `Overlap]) result Lwt.t
   val delete : t -> channel list -> unit Lwt.t
 end
 

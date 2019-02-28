@@ -7,8 +7,6 @@ open Lwt.Infix
 
 let (>>!=) = Rresult.R.bind
 
-let duration_of_seconds x = Int64.mul (Int64.of_int x) 1_000_000_000L
-
 let rewrite_ip ~src ~dst ip =
   match ip.Ipv4_packet.ttl with
   | 0 -> Error `TTL_exceeded    (* TODO: send ICMP reply *)
@@ -51,8 +49,6 @@ module Make(N : Mirage_nat.TABLE) = struct
     type transport
     module Table : Mirage_nat.SUBTABLE with type t := N.t
 
-    val expiry_ns : int64
-
     val channel : transport -> Table.transport_channel option
     (* [channel transport] extracts the transport information from a request message.
         Returns [None] if the message is not suitable for NAT. *)
@@ -77,8 +73,6 @@ module Make(N : Mirage_nat.TABLE) = struct
 
     type transport = [`TCP of Tcp.Tcp_packet.t * Cstruct.t]
 
-    let expiry_ns = duration_of_seconds (60*60*24) (* TCP gets a day - this is silly *)
-
     let channel (`TCP (x, _)) = Some (Tcp.Tcp_packet.(x.src_port, x.dst_port))
 
     let flip (src_port, dst_port) = (dst_port, src_port)
@@ -98,8 +92,6 @@ module Make(N : Mirage_nat.TABLE) = struct
 
     type transport = [`UDP of Udp_packet.t * Cstruct.t]
 
-    let expiry_ns = duration_of_seconds 60 (* UDP gets 60 seconds *)
-
     let channel (`UDP (x, _)) = Some (Udp_packet.(x.src_port, x.dst_port))
 
     let flip = TCP.flip
@@ -116,8 +108,6 @@ module Make(N : Mirage_nat.TABLE) = struct
     module Table = N.ICMP
 
     type transport = [`ICMP of Icmpv4_packet.t * Cstruct.t]
-
-    let expiry_ns = duration_of_seconds 120 (* RFC 5508: An ICMP Query session timer MUST NOT expire in less than 60 seconds *)
 
     let flip id = id
 
@@ -150,7 +140,7 @@ module Make(N : Mirage_nat.TABLE) = struct
       let src = ip.Ipv4_packet.src in
       let dst = ip.Ipv4_packet.dst in
       P.Table.lookup table (src, dst, transport_channel) >|= function
-      | Some (_expiry, (src, dst, new_transport_channel)) ->
+      | Some (src, dst, new_transport_channel) ->
         rewrite_ip ~src ~dst ip >>!= fun new_ip_header ->
         Ok (P.rewrite ~new_ip_header transport new_transport_channel)
       | None ->
@@ -211,7 +201,7 @@ module Make(N : Mirage_nat.TABLE) = struct
         | `TCP -> N.TCP.lookup table channel
         | `UDP -> N.UDP.lookup table channel
       end >|= function
-      | Some (_expiry, (new_src, new_dst, (new_sport, new_dport))) ->
+      | Some (new_src, new_dst, (new_sport, new_dport)) ->
         (* translate both the inner and outer IPv4 headers *)
         (* but only call rewrite_ip on the outer header, since we don't want to decrement the TTL in the inner one *)
         rewrite_ip ~src:new_src ~dst:new_dst outer_ip >>!= fun translated_outer_ip ->
@@ -252,7 +242,7 @@ module Make(N : Mirage_nat.TABLE) = struct
         let encapsulated_transport_header = Cstruct.shift icmp_payload inner_untranslated_ip_payload in
         icmp_error table ~outer_ip ~inner_ip ~icmp ~icmp_payload ~encapsulated_transport_header
 
-  let add table ~now packet (xl_host, xl_port) mode =
+  let add table packet (xl_host, xl_port) mode =
     let `IPv4 (ip_header, transport) = packet in
     let check_scope ip =
       match Ipaddr.scope (V4 ip) with
@@ -264,14 +254,13 @@ module Make(N : Mirage_nat.TABLE) = struct
     | false, _ | _, false -> Lwt.return (Error `Cannot_NAT)
     | true, true ->
       let add2 (type t) (module P : PROTOCOL with type transport = t) (t:t) =
-        let expiry = Int64.add now P.expiry_ns in
         match P.channel t with
         | None -> Lwt.return (Error `Cannot_NAT)
         | Some transport_channel ->
           let add_mapping (final_dst, translated_transport) =
             let request_mapping = (src, dst, transport_channel), (xl_host, final_dst, translated_transport) in
             let response_mapping = (final_dst, xl_host, P.flip translated_transport), (dst, src, P.flip transport_channel) in
-            P.Table.insert table ~expiry [request_mapping; response_mapping]
+            P.Table.insert table [request_mapping; response_mapping]
           in
           match mode with
           | `NAT -> add_mapping (dst, P.nat_rule transport_channel xl_port)

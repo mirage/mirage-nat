@@ -10,7 +10,7 @@
 type 'a channel = Ipaddr.V4.t * Ipaddr.V4.t * 'a
 
 module Uniform_weights(T : sig type t end) = struct
-  type t = Mirage_nat.time * T.t
+  type t = T.t
   let weight _ = 1
 end
 
@@ -45,7 +45,7 @@ module Storage = struct
   module Subtable
       (L : sig
          type transport_channel
-         module LRU : Lru.F.S with type v = Mirage_nat.time * transport_channel channel
+         module LRU : Lru.F.S with type v = transport_channel channel
          val table : t -> LRU.t ref
        end)
   = struct
@@ -61,7 +61,7 @@ module Storage = struct
 
     (* cases that should result in a valid mapping:
        neither side is already mapped *)
-    let insert t ~expiry mappings =
+    let insert t mappings =
       MProf.Trace.label "Mirage_nat_hashtable.insert";
       let t = L.table t in
       match mappings with
@@ -73,7 +73,7 @@ module Storage = struct
         else (
           (* TODO: this is not quite right if all mappings already exist, because it's possible that
              the lookups are part of differing pairs -- this situation is pathological, but possible *)
-          t := List.fold_left (fun acc (a, b) -> L.LRU.add a (expiry, b) acc) !t mappings;
+          t := List.fold_left (fun acc (a, b) -> L.LRU.add a b acc) !t mappings;
           Lwt.return (Ok ())
         )
 

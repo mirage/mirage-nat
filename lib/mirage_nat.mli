@@ -1,6 +1,5 @@
 type port = Cstruct.uint16
 type endpoint = Ipaddr.V4.t * port
-type time = int64
 
 type error = [
   | `Overlap      (* There is already a translation using this slot. *)
@@ -10,10 +9,6 @@ type error = [
 ]
 
 val pp_error : [< error] Fmt.t
-
-module type CLOCK = Mirage_clock_lwt.MCLOCK
-
-module type TIME = Mirage_time_lwt.S
 
 module type S = sig
   type t
@@ -26,7 +21,7 @@ module type S = sig
     * The payload in the result shares the Cstruct with the input, so they should be
     * treated as read-only. *)
 
-  val add : t -> now:time -> Nat_packet.t -> endpoint -> [`NAT | `Redirect of endpoint] -> (unit, [> `Overlap | `Cannot_NAT]) result Lwt.t
+  val add : t -> Nat_packet.t -> endpoint -> [`NAT | `Redirect of endpoint] -> (unit, [> `Overlap | `Cannot_NAT]) result Lwt.t
   (** [add t ~now packet xl_endpoint mode] adds an entry to the table to translate packets
       on [packet]'s channel according to [mode], and another entry to translate the
       replies back again.
@@ -64,12 +59,12 @@ module type SUBTABLE = sig
   type transport_channel
   type channel = Ipaddr.V4.t * Ipaddr.V4.t * transport_channel
 
-  val lookup : t -> channel -> (time * channel) option Lwt.t
+  val lookup : t -> channel -> channel option Lwt.t
   (** [lookup t channel] is [Some (expiry, translated_channel)] - the new endpoints
       that should be applied to a packet using [channel] - or [None] if no entry for [channel] exists.
       [expiry] is an absolute time-stamp. *)
 
-  val insert : t -> expiry:time -> (channel * channel) list -> (unit, [> `Overlap]) result Lwt.t
+  val insert : t -> (channel * channel) list -> (unit, [> `Overlap]) result Lwt.t
   (** [insert t ~expiry translations] adds the given translations to the table.
       Each translation is a pair [input, target] - packets with channel [input] should be
       rewritten to have channel [output].
