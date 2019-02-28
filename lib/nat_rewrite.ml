@@ -159,7 +159,10 @@ module Make(N : Mirage_nat.TABLE) = struct
         Log.err (fun m -> m "No rule matching channel");
         Error `Untranslated
 
-  let icmp_error table orig_ip_pub ip icmp payload payload_len =
+  (* which payload is referred to by payload_len, and what is that value used for? *)
+  (* payload_len is the length of the payload of the *encapsulated* IPv4 packet.
+   it is used to rewrite the encapsulated IPv4 packet's header correctly. *)
+  let icmp_error table orig_ip_pub ip icmp payload encapsulated_ip_payload_len =
     match Icmp_payload.get_ports orig_ip_pub payload with
     | Error _ as e -> Lwt.return e
     | Ok (proto, src_port, dst_port) ->
@@ -178,7 +181,7 @@ module Make(N : Mirage_nat.TABLE) = struct
         rewrite_ip ~src:new_src ~dst:new_dst ip >>!= fun ip ->
         let orig_ip_priv = { orig_ip_pub with Ipv4_packet.dst = new_src; src = new_dst } in
         let payload = Icmp_payload.with_ports payload (new_dport, new_sport) proto in
-        let ip_struct = Ipv4_packet.Marshal.make_cstruct orig_ip_priv ~payload_len in
+        let ip_struct = Ipv4_packet.Marshal.make_cstruct orig_ip_priv ~payload_len:encapsulated_ip_payload_len in
         let error_priv = Cstruct.concat [ip_struct; payload] in
         Ok (`IPv4 (ip, (`ICMP (icmp, error_priv))))
       | _ ->
@@ -199,7 +202,7 @@ module Make(N : Mirage_nat.TABLE) = struct
         Lwt.return @@ Error `Untranslated
       | Ok (orig_ip, data_start) ->
         let transport = Cstruct.shift payload data_start in
-        icmp_error table orig_ip ip icmp transport (Cstruct.len payload)   
+        icmp_error table orig_ip ip icmp transport (Cstruct.len transport)   
 
   let add table ~now packet (xl_host, xl_port) mode =
     let `IPv4 (ip_header, transport) = packet in
