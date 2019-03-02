@@ -191,11 +191,15 @@ module Make(N : Mirage_nat.TABLE) = struct
                 );
       (* When checking for an associated entry in the NAT table, we want to use the port information
          from the encapsulated transport header, along with the IP information. *)
-      (* It is possible to get the IP information either from the outer IPv4 header (external source to public NAT ip),
-         or from the inner header (public NAT ip to external source). *)
-      (* However the port info is only available in the encapsulated transport header, where it will be reversed from the
-         direction of the outer IPv4 packet's source and destination. *)
-      let channel = outer_ip.Ipv4_packet.src, outer_ip.Ipv4_packet.dst, (dst_port, src_port) in
+      (* It is necessary to take the inner IPv4 source and destination address,
+         since the outer IPv4 header may come from an intermediate router which
+         won't be represented in the table. *)
+      (* Since we are looking up the information from the inner header, we will need to
+         switch the source and destination to get the correct translation from the NAT
+         table. *)
+      (* The port info is only available in the encapsulated transport header, but it also
+         must be reversed in the lookup call in order to get the correct translation. *)
+      let channel = inner_ip.Ipv4_packet.dst, inner_ip.Ipv4_packet.src, (dst_port, src_port) in
       begin
         match proto with
         | `TCP -> N.TCP.lookup table channel
