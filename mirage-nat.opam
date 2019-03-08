@@ -25,7 +25,7 @@ depends: [
   "ppx_deriving" {build & >= "4.2" }
   "dune" {build & >= "1.0"}
   "tcpip" { >= "3.7.0" }
-  "ethernet"
+  "ethernet" { >= "2.0.0" }
   "arp"
   "alcotest" {test}
   "mirage-clock-unix" {test}
