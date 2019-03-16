@@ -95,11 +95,7 @@ let to_cstruct ((`IPv4 (ip, transport)):t) =
     | `ICMP _ -> Icmpv4_wire.sizeof_icmpv4
     | `UDP _ -> Udp_wire.sizeof_udp
     | `TCP (tcp_header, _) ->
-      (* TODO: unfortunately, in order to correctly figure out the pseudoheader (and thus the TCP checksum),
-       * we need to know the length field of the IPv4 header.  That means we need to know the *overall* length,
-       * which means we need to know how many bytes are required to marshal the TCP options. *)
-      let options_buf = Cstruct.create 40 in (* 40 is max possible *)
-      let options_length = Tcp.Options.marshal options_buf tcp_header.Tcp.Tcp_packet.options in
+      let options_length = Tcp.Options.lenv tcp_header.Tcp.Tcp_packet.options in
       Tcp.Tcp_wire.sizeof_tcp + options_length
   in
   (* Write transport headers to second part of buffer.
