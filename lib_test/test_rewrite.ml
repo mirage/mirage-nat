@@ -33,19 +33,30 @@ module Constructors = struct
         (Ipv4_packet.Unmarshal.verify_transport_checksum ~ipv4_header ~transport_packet ~proto)
 
   let check_save_restore packet =
-    let raw = Cstruct.concat @@ Nat_packet.to_cstruct packet in
-    assert_checksum_correct raw;
-    match Nat_packet.of_ipv4_packet raw with
-    | Ok loaded when Nat_packet.equal packet loaded -> ()
-    | Ok loaded -> Alcotest.fail (Fmt.strf "Packet changed by save/load! Saved:@.%a@.Got:@.%a"
-                                    Nat_packet.pp packet
-                                    Nat_packet.pp loaded
-                                 )
-    | Error e   -> Alcotest.fail (Fmt.strf "Failed to load saved packet! Saved:@.%a@.As:@.%a@.Error: %a"
-                                    Nat_packet.pp packet
-                                    Cstruct.hexdump_pp raw
-                                    Nat_packet.pp_error e
-                                 )
+    let raw_to_cstruct = Cstruct.concat @@ Nat_packet.to_cstruct packet in
+    let raw_into_cstruct =
+      let buf = Cstruct.create 2048 in
+      match Nat_packet.into_cstruct packet buf with
+      | Error e -> Alcotest.fail (Fmt.strf "into_cstruct failed: %a" Nat_packet.pp_error e)
+      | Ok n -> Cstruct.sub buf 0 n
+    in
+    assert_checksum_correct raw_to_cstruct;
+    assert_checksum_correct raw_into_cstruct;
+    let check_packet raw =
+      match Nat_packet.of_ipv4_packet raw with
+      | Ok loaded when Nat_packet.equal packet loaded -> ()
+      | Ok loaded -> Alcotest.fail (Fmt.strf "Packet changed by save/load! Saved:@.%a@.Got:@.%a"
+                                      Nat_packet.pp packet
+                                      Nat_packet.pp loaded
+                                   )
+      | Error e   -> Alcotest.fail (Fmt.strf "Failed to load saved packet! Saved:@.%a@.As:@.%a@.Error: %a"
+                                      Nat_packet.pp packet
+                                      Cstruct.hexdump_pp raw
+                                      Nat_packet.pp_error e
+                                   )
+    in
+    check_packet raw_to_cstruct;
+    check_packet raw_into_cstruct
 
   let full_packet ~payload ~proto ~ttl ~src ~dst ~src_port ~dst_port =
     let transport = match proto with

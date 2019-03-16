@@ -33,6 +33,17 @@ module Main
             public_arpv4 private_arpv4
             public_ipv4 _private_ipv4 _random =
 
+    (* if writing a packet into a given memory buffer failed,
+       log the failure, pass information on how much was written
+       to the underlying function (none), and continue.
+       This is a convenience function for later calls to `write`. *)
+    let log_write_error = function
+      | Error e -> Log.debug (fun f -> f "Failed to write packet into given buffer: %a"
+                                 Nat_packet.pp_error e);
+        0
+      | Ok n -> n
+    in
+
     (* in order to successfully translate, we have to send the packets we've
        changed.  define some convenience functions for sending via public and
        private interfaces so we don't have to think about ARP later, when we'll 
@@ -50,10 +61,8 @@ module Main
                                 as a failure occurred on the ARP layer");
         Lwt.return_unit
       | Ok destination ->
-        let frame = Util.ethernet_frame
-            ~source:(Public_ethernet.mac public_ethernet)
-            ~destination Ethif_wire.IPv4 in
-        Public_ethernet.writev public_ethernet (frame :: Nat_packet.to_cstruct packet) >>= function
+        Public_ethernet.write public_ethernet destination `IPv4
+          (fun b -> log_write_error @@ Nat_packet.into_cstruct packet b) >>= function
         | Error e ->
           Log.debug (fun f -> f "Failed to send packet from public interface: %a"
                         Public_ethernet.pp_error e);
@@ -69,10 +78,8 @@ module Main
                                 as a failure occurred on the ARP layer");
         Lwt.return_unit
       | Ok destination ->
-        let frame = Util.ethernet_frame
-            ~source:(Private_ethernet.mac private_ethernet)
-            ~destination Ethif_wire.IPv4 in
-        Private_ethernet.writev private_ethernet (frame :: Nat_packet.to_cstruct packet) >>= function
+        Private_ethernet.write private_ethernet destination `IPv4
+          (fun b -> log_write_error @@ Nat_packet.into_cstruct packet b) >>= function
         | Error e ->
           Log.debug (fun f -> f "Failed to send packet from private interface: %a"
                         Private_ethernet.pp_error e);
