@@ -98,7 +98,7 @@ let to_cstruct ((`IPv4 (ip, transport)):t) =
       let options_length = Tcp.Options.lenv tcp_header.Tcp.Tcp_packet.options in
       Tcp.Tcp_wire.sizeof_tcp + options_length
   in
-  (* Write transport headers to second part of buffer.
+  (* Create buffers representing the transport header, and return it in a list with the payload.
      We do the transport layer first so that we calculate the correct checksum when we
      write the IP layer. *)
   let transport =
@@ -124,9 +124,7 @@ let to_cstruct ((`IPv4 (ip, transport)):t) =
       Logs.debug (fun f -> f "TCP header written: %a" Cstruct.hexdump_pp transport_header);
       [transport_header; tcp_payload]
   in
-  (* Write the IP header to the first part of the buffer. *)
-  let ip_payload_len = Cstruct.lenv transport in
-  let ip_header = Ipv4_packet.Marshal.make_cstruct ~payload_len:ip_payload_len ip in
+  let ip_header = Ipv4_packet.Marshal.make_cstruct ~payload_len:(Cstruct.lenv transport) ip in
   ip_header :: transport
   
 let pp_icmp f = function
