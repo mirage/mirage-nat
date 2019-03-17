@@ -60,7 +60,7 @@ module Constructors = struct
         }, payload)
     in
     let proto = Ipv4_packet.Marshal.protocol_to_int (proto :> Ipv4_packet.protocol) in
-    let ip = { Ipv4_packet.src; dst; proto; ttl; options = (Cstruct.create 0) } in
+    let ip = { Ipv4_packet.src; dst; proto; ttl; id=0x00; off = 0; options = (Cstruct.create 0) } in
     let packet = `IPv4 (ip, transport) in
     check_save_restore packet;
     packet
@@ -103,7 +103,7 @@ module Constructors = struct
           subheader = Icmpv4_packet.Unused;
         }, err
     in
-    let ip = {Ipv4_packet.src; dst; ttl; options = Cstruct.create 0; proto} in
+    let ip = {Ipv4_packet.src; dst; ttl; options = Cstruct.create 0; proto; id=0x00; off=0;} in
     `IPv4 (ip, `ICMP (icmp, payload))
 
 end
@@ -212,7 +212,7 @@ let test_add_nat_broadcast () =
   add ~now:0L t broadcast (xl, xlport) `NAT >|=
   Alcotest.check add_result "Ignore broadcast" (Error `Cannot_NAT) >>= fun () ->
   (* try just an ethernet frame *)
-  let e = Cstruct.create Ethif_wire.sizeof_ethernet in
+  let e = Cstruct.create Ethernet_wire.sizeof_ethernet in
   Nat_packet.of_ethernet_frame e |> Rresult.R.reword_error ignore
   |> Alcotest.(check (result packet_t unit)) "Bare ethernet frame" (Error ());
   Lwt.return ()

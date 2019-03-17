@@ -7,7 +7,7 @@ module Main
        modules for the public and private interfaces, so each one shows up as
        a module argument. *)
     (Public_net: Mirage_net_lwt.S) (Private_net: Mirage_net_lwt.S)
-    (Public_ethernet : Protocols.ETHIF) (Private_ethernet : Protocols.ETHIF)
+    (Public_ethernet : Protocols.ETHERNET) (Private_ethernet : Protocols.ETHERNET)
     (Public_arpv4 : Protocols.ARP) (Private_arpv4 : Protocols.ARP)
     (Public_ipv4 : Protocols.IPV4) (Private_ipv4 : Protocols.IPV4)
     (Random : Mirage_random.C)
@@ -135,7 +135,9 @@ module Main
        send ARP traffic to the normal ARP listener and responder,
        handle ipv4 traffic with the functions we've defined above for NATting,
        and ignore all ipv6 traffic (ipv6 has no need for NAT!). *)
-    let listen_public = Public_net.listen public_netif (
+    (* header_size is 14 for Ethernet networks.  If an 802.1q tag is present,
+       this should instead be 18. *)
+    let listen_public = Public_net.listen ~header_size:14 public_netif (
         Public_ethernet.input ~arpv4:(Public_arpv4.input public_arpv4)
                               ~ipv4:(Util.try_decompose (ingest_public table))
                               ~ipv6:(fun _ -> Lwt.return_unit)
@@ -147,7 +149,9 @@ module Main
         Lwt.return_unit
     in
 
-    let listen_private = Private_net.listen private_netif (
+    (* As above, header_size is 14 for Ethernet networks.
+       If an 802.1q tag is present, this should instead be 18. *)
+    let listen_private = Private_net.listen ~header_size:14 private_netif (
         Private_ethernet.input ~arpv4:(Private_arpv4.input private_arpv4)
                               ~ipv4:(Util.try_decompose (ingest_private table))
                               ~ipv6:(fun _ -> Lwt.return_unit)

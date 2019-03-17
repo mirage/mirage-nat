@@ -13,8 +13,8 @@ let public_ethernet = etif public_netif
 let private_ethernet = etif private_netif
 
 (* use the functional address resolution protocol *)
-let public_arpv4 = farp public_ethernet
-let private_arpv4 = farp private_ethernet
+let public_arpv4 = arp public_ethernet
+let private_arpv4 = arp private_ethernet
 
 (* finally, use statically configured (at build or runtime) ipv4 addresses.
    (you might want to use dhcp to configure the address on the public interface.
@@ -26,6 +26,8 @@ let private_ipv4 = create_ipv4 ~group:"private" private_ethernet private_arpv4
 
 let packages = [
   package "mirage-nat";
+  package ~min:"2.0.0" "mirage-protocols-lwt";
+  package ~min:"2.0.0" "mirage-protocols";
 ]
 
 (* our unikernel needs to know about physical network, ethernet, arp, and ipv4

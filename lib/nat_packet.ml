@@ -72,14 +72,14 @@ let of_ipv4_packet packet : (t, error) result =
       Error (fun f -> Fmt.pf f "Ignoring non-TCP/UDP packet: %a" Ipv4_packet.pp ip)
 
 let of_ethernet_frame frame =
-  match Ethif_packet.Unmarshal.of_cstruct frame with
+  match Ethernet_packet.Unmarshal.of_cstruct frame with
   | Error e ->
     Error (fun f -> Fmt.pf f "Failed to parse ethernet frame: %s@.%a" e Cstruct.hexdump_pp frame)
   | Ok (eth, packet) ->
-    match eth.Ethif_packet.ethertype with
-    | Ethif_wire.ARP | Ethif_wire.IPv6 ->
+    match eth.Ethernet_packet.ethertype with
+    | `ARP | `IPv6 ->
       Error (fun f -> Fmt.pf f "Ignoring a non-IPv4 frame: %a" Cstruct.hexdump_pp frame)
-    | Ethif_wire.IPv4 -> of_ipv4_packet packet
+    | `IPv4 -> of_ipv4_packet packet
 
 let icmp_to_cstruct = function
   | `Query payload -> payload
