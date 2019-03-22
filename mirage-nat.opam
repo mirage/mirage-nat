@@ -7,11 +7,11 @@ bug-reports: "https://github.com/mirage/mirage-nat/issues/"
 dev-repo: "https://github.com/mirage/mirage-nat.git"
 license: "ISC"
 build: [
-  ["jbuilder" "subst"] {pinned}
-  ["jbuilder" "build" "-p" name "-j" jobs]
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
 ]
 build-test: [
-  ["jbuilder" "runtest" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs]
 ]
 depends: [
   "ipaddr"
@@ -23,8 +23,10 @@ depends: [
   "logs"
   "lru"
   "ppx_deriving" {build & >= "4.2" }
-  "jbuilder" {build}
-  "tcpip" { >= "3.0.0" }
+  "dune" {build & >= "1.0"}
+  "tcpip" { >= "3.7.0" }
+  "ethernet" { >= "2.0.0" }
+  "arp"
   "alcotest" {test}
   "mirage-clock-unix" {test}
 ]

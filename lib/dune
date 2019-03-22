@@ -1,0 +1,8 @@
+(library
+ (name mirage_nat)
+ (public_name mirage-nat)
+ (modules mirage_nat nat_rewrite nat_packet mirage_nat_lru)
+ (wrapped false)
+ (libraries mirage-clock-lwt tcpip.ipv4 tcpip.tcp tcpip.udp tcpip.icmpv4 lru ethernet arp)
+ (preprocess
+  (pps ppx_deriving.eq)))

@@ -72,14 +72,14 @@ let of_ipv4_packet packet : (t, error) result =
       Error (fun f -> Fmt.pf f "Ignoring non-TCP/UDP packet: %a" Ipv4_packet.pp ip)
 
 let of_ethernet_frame frame =
-  match Ethif_packet.Unmarshal.of_cstruct frame with
+  match Ethernet_packet.Unmarshal.of_cstruct frame with
   | Error e ->
     Error (fun f -> Fmt.pf f "Failed to parse ethernet frame: %s@.%a" e Cstruct.hexdump_pp frame)
   | Ok (eth, packet) ->
-    match eth.Ethif_packet.ethertype with
-    | Ethif_wire.ARP | Ethif_wire.IPv6 ->
+    match eth.Ethernet_packet.ethertype with
+    | `ARP | `IPv6 ->
       Error (fun f -> Fmt.pf f "Ignoring a non-IPv4 frame: %a" Cstruct.hexdump_pp frame)
-    | Ethif_wire.IPv4 -> of_ipv4_packet packet
+    | `IPv4 -> of_ipv4_packet packet
 
 let icmp_to_cstruct = function
   | `Query payload -> payload
@@ -87,22 +87,18 @@ let icmp_to_cstruct = function
     let ip = Ipv4_packet.Marshal.make_cstruct ip ~payload_len in
     Cstruct.concat [ip; payload]
 
+let decompose_transport = function
+  | `ICMP (_, icmp_payload) -> Icmpv4_wire.sizeof_icmpv4, (Cstruct.len @@ icmp_to_cstruct icmp_payload)
+  | `UDP (_, udp_payload) -> Udp_wire.sizeof_udp, (Cstruct.len udp_payload)
+  | `TCP (tcp_header, tcp_payload) ->
+    let options_length = Tcp.Options.lenv tcp_header.Tcp.Tcp_packet.options in
+    (Tcp.Tcp_wire.sizeof_tcp + options_length), (Cstruct.len tcp_payload)
+
 let to_cstruct ((`IPv4 (ip, transport)):t) =
   let {Ipv4_packet.src; dst; _} = ip in
   (* Calculate required buffer size *)
-  let transport_header_len =
-    match transport with
-    | `ICMP _ -> Icmpv4_wire.sizeof_icmpv4
-    | `UDP _ -> Udp_wire.sizeof_udp
-    | `TCP (tcp_header, _) ->
-      (* TODO: unfortunately, in order to correctly figure out the pseudoheader (and thus the TCP checksum),
-       * we need to know the length field of the IPv4 header.  That means we need to know the *overall* length,
-       * which means we need to know how many bytes are required to marshal the TCP options. *)
-      let options_buf = Cstruct.create 40 in (* 40 is max possible *)
-      let options_length = Tcp.Options.marshal options_buf tcp_header.Tcp.Tcp_packet.options in
-      Tcp.Tcp_wire.sizeof_tcp + options_length
-  in
-  (* Write transport headers to second part of buffer.
+  let transport_header_len, _ = decompose_transport transport in
+  (* Create buffers representing the transport header, and return it in a list with the payload.
      We do the transport layer first so that we calculate the correct checksum when we
      write the IP layer. *)
   let transport =
@@ -128,11 +124,67 @@ let to_cstruct ((`IPv4 (ip, transport)):t) =
       Logs.debug (fun f -> f "TCP header written: %a" Cstruct.hexdump_pp transport_header);
       [transport_header; tcp_payload]
   in
-  (* Write the IP header to the first part of the buffer. *)
-  let ip_payload_len = Cstruct.lenv transport in
-  let ip_header = Ipv4_packet.Marshal.make_cstruct ~payload_len:ip_payload_len ip in
+  let ip_header = Ipv4_packet.Marshal.make_cstruct ~payload_len:(Cstruct.lenv transport) ip in
   ip_header :: transport
-  
+
+let into_cstruct ((`IPv4 (ip, transport)):t) full_buffer =
+  let open Rresult.R in
+  let {Ipv4_packet.src; dst; _} = ip in
+  (* Calculate required buffer size *)
+  let ip_header_len = Ipv4_wire.sizeof_ipv4 + Cstruct.len ip.Ipv4_packet.options in
+  let transport_header_len, transport_payload_len = decompose_transport transport in
+  let length_check total_len buf =
+    if total_len > Cstruct.len buf then
+      Error (fun f -> Fmt.pf f "Needed %d bytes to represent the packet, but buffer of insufficient size (%d) was provided" total_len (Cstruct.len buf))
+    else Ok ()
+  in
+  (* copy the payload into the provided buffer, then write the correct transport header *)
+  let write_transport_header_and_payload transport =
+    let payload_start = ip_header_len + transport_header_len in
+    match transport with
+    | `ICMP (icmp_header, payload) -> begin
+        let payload = icmp_to_cstruct payload in
+        Cstruct.blit payload 0 full_buffer payload_start transport_payload_len;
+        match Icmpv4_packet.Marshal.into_cstruct icmp_header ~payload (Cstruct.shift full_buffer ip_header_len) with
+        | Error s -> Error (fun f -> Fmt.pf f "Error writing ICMPv4 packet: %s" s);
+        | Ok () ->
+          Logs.debug (fun f -> f "ICMP header and payload written: %a" Cstruct.hexdump_pp (Cstruct.shift full_buffer ip_header_len));
+          Ok (transport_header_len + transport_payload_len)
+      end
+    | `UDP (udp_header, udp_payload) -> begin
+        Cstruct.blit udp_payload 0 full_buffer payload_start transport_payload_len;
+        let pseudoheader = Ipv4_packet.Marshal.pseudoheader ~src ~dst ~proto:`UDP (Cstruct.len udp_payload + Udp_wire.sizeof_udp) in
+        match Udp_packet.Marshal.into_cstruct
+                ~pseudoheader ~payload:udp_payload udp_header
+                (Cstruct.shift full_buffer ip_header_len) with
+        | Error s -> Error (fun f -> Fmt.pf f "Error writing UDP packet: %s" s);
+        | Ok () ->
+          Logs.debug (fun f -> f "UDP header written: %a" Cstruct.hexdump_pp (Cstruct.sub full_buffer ip_header_len transport_header_len));
+          Ok (transport_header_len + transport_payload_len)
+      end
+    | `TCP (tcp_header, tcp_payload) -> begin
+        Cstruct.blit tcp_payload 0 full_buffer payload_start transport_payload_len;
+        (* and now transport header *)
+        let pseudoheader = Ipv4_packet.Marshal.pseudoheader ~src ~dst ~proto:`TCP
+            (transport_header_len + transport_payload_len) in
+        match Tcp.Tcp_packet.Marshal.into_cstruct
+                ~pseudoheader tcp_header
+                ~payload:tcp_payload (Cstruct.shift full_buffer ip_header_len) with
+        | Error s -> Error (fun f -> Fmt.pf f "Error writing TCP packet: %s" s);
+        | Ok written ->
+          Logs.debug (fun f -> f "TCP header written: %a" Cstruct.hexdump_pp (Cstruct.sub full_buffer ip_header_len transport_header_len));
+          Ok (written + transport_payload_len)
+      end
+  in
+  length_check (ip_header_len + transport_header_len + transport_payload_len) full_buffer >>= fun () ->
+  write_transport_header_and_payload transport >>= fun written ->
+  (* Write the IP header into the first part of the buffer. *)
+  match Ipv4_packet.Marshal.into_cstruct ~payload_len:written ip full_buffer with
+  | Error s -> Error (fun f -> Fmt.pf f "Error writing IPv4 header: %s" s)
+  | Ok () ->
+    Logs.debug (fun f -> f "IPv4 header written: %a" Cstruct.hexdump_pp (Cstruct.sub full_buffer 0 ip_header_len));
+    Ok (written + ip_header_len)
+
 let pp_icmp f = function
   | `Query payload -> Cstruct.hexdump_pp f payload
   | `Error (ip, payload, payload_len) ->
