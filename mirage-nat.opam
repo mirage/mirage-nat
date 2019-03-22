@@ -5,6 +5,7 @@ authors: "Mindy Preston <meetup@yomimono.org>"
 homepage: "https://github.com/mirage/mirage-nat"
 bug-reports: "https://github.com/mirage/mirage-nat/issues/"
 dev-repo: "https://github.com/mirage/mirage-nat.git"
+doc: "https://mirage.github.io/mirage-nat/"
 license: "ISC"
 build: [
   ["dune" "subst"] {pinned}
