@@ -1,18 +1,16 @@
-opam-version: "1.2"
+opam-version: "2.0"
 name: "mirage-nat"
 maintainer: "Mindy Preston <meetup@yomimono.org>"
 authors: "Mindy Preston <meetup@yomimono.org>"
 homepage: "https://github.com/mirage/mirage-nat"
 bug-reports: "https://github.com/mirage/mirage-nat/issues/"
-dev-repo: "https://github.com/mirage/mirage-nat.git"
+dev-repo: "git+https://github.com/mirage/mirage-nat.git"
 doc: "https://mirage.github.io/mirage-nat/"
 license: "ISC"
 build: [
   ["dune" "subst"] {pinned}
   ["dune" "build" "-p" name "-j" jobs]
-]
-build-test: [
-  ["dune" "runtest" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
 ]
 depends: [
   "ipaddr"
