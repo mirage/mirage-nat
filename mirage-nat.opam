@@ -26,6 +26,14 @@ depends: [
   "tcpip" { >= "3.7.0" }
   "ethernet" { >= "2.0.0" }
   "arp"
-  "alcotest" {test}
-  "mirage-clock-unix" {test}
+  "alcotest" {with-test}
+  "mirage-clock-unix" {with-test}
 ]
+synopsis: "Mirage-nat is a library for network address translation to be used with MirageOS"
+description: """
+Mirage-nat is a library for [network address
+translation](https://tools.ietf.org/html/rfc2663).  It is intended for use in
+[MirageOS](https://mirage.io) and makes extensive use of
+[tcpip](https://github.com/mirage/mirage-tcpip), the network stack used by
+default in MirageOS unikernels.
+"""
