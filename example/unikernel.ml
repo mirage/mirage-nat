@@ -142,28 +142,32 @@ module Main
        send ARP traffic to the normal ARP listener and responder,
        handle ipv4 traffic with the functions we've defined above for NATting,
        and ignore all ipv6 traffic (ipv6 has no need for NAT!). *)
-    (* header_size is 14 for Ethernet networks.  If an 802.1q tag is present,
-       this should instead be 18. *)
-    let listen_public = Public_net.listen ~header_size:14 public_netif (
-        Public_ethernet.input ~arpv4:(Public_arpv4.input public_arpv4)
-                              ~ipv4:(Util.try_decompose (ingest_public table))
-                              ~ipv6:(fun _ -> Lwt.return_unit)
-                              public_ethernet
-      ) >>= function
+    let listen_public =
+      let header_size = Ethernet_wire.sizeof_ethernet
+      and input =
+        Public_ethernet.input
+          ~arpv4:(Public_arpv4.input public_arpv4)
+          ~ipv4:(Util.try_decompose (ingest_public table))
+          ~ipv6:(fun _ -> Lwt.return_unit)
+          public_ethernet
+      in
+      Public_net.listen ~header_size public_netif input >>= function
       | Error e -> Log.debug (fun f -> f "public interface stopped: %a"
                                  Public_net.pp_error e); Lwt.return_unit
       | Ok () -> Log.debug (fun f -> f "public interface terminated normally");
         Lwt.return_unit
     in
 
-    (* As above, header_size is 14 for Ethernet networks.
-       If an 802.1q tag is present, this should instead be 18. *)
-    let listen_private = Private_net.listen ~header_size:14 private_netif (
-        Private_ethernet.input ~arpv4:(Private_arpv4.input private_arpv4)
-                              ~ipv4:(Util.try_decompose (ingest_private table))
-                              ~ipv6:(fun _ -> Lwt.return_unit)
-                              private_ethernet
-      ) >>= function
+    let listen_private =
+      let header_size = Ethernet_wire.sizeof_ethernet
+      and input =
+        Private_ethernet.input
+          ~arpv4:(Private_arpv4.input private_arpv4)
+          ~ipv4:(Util.try_decompose (ingest_private table))
+          ~ipv6:(fun _ -> Lwt.return_unit)
+          private_ethernet
+      in
+      Private_net.listen ~header_size private_netif input >>= function
       | Error e -> Log.debug (fun f -> f "private interface stopped: %a"
                                  Private_net.pp_error e); Lwt.return_unit
       | Ok () -> Log.debug (fun f -> f "private interface terminated normally");
