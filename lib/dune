@@ -5,4 +5,4 @@
  (wrapped false)
  (libraries mirage-clock-lwt tcpip.ipv4 tcpip.tcp tcpip.udp tcpip.icmpv4 lru ethernet arp)
  (preprocess
-  (pps ppx_deriving.eq)))
+  (pps ppx_deriving.eq bisect_ppx -conditional -no-comment-parsing)))

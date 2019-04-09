@@ -20,8 +20,9 @@ module Icmp_payload = struct
       Log.debug (fun m -> m "Payload too short to analyze");
       Error `Untranslated)
     else match Ipv4_packet.Unmarshal.int_to_protocol ip.Ipv4_packet.proto with
-      | Some `UDP -> Ok (`UDP, Udp_wire.get_udp_source_port payload, Udp_wire.get_udp_dest_port payload)
-      | Some `TCP -> Ok (`TCP, Tcp.Tcp_wire.get_tcp_src_port payload, Tcp.Tcp_wire.get_tcp_dst_port payload)
+      | Some `UDP -> Ok (`UDP (Udp_wire.get_udp_source_port payload, Udp_wire.get_udp_dest_port payload))
+      | Some `TCP -> Ok (`TCP (Tcp.Tcp_wire.get_tcp_src_port payload, Tcp.Tcp_wire.get_tcp_dst_port payload))
+      | Some `ICMP -> Ok `ICMP
       | _ -> Error `Untranslated
 
   let dup src =
@@ -220,7 +221,11 @@ module Make(N : Mirage_nat.TABLE) = struct
     in
     match Icmp_payload.get_ports inner_ip inner_transport_header with
     | Error _ as e -> Lwt.return e
-    | Ok (proto, src_port, dst_port) ->
+    | Ok `ICMP -> 
+        type transport = [`ICMP of Icmpv4_packet.t * Cstruct.t]
+
+        translate2 table (module ICMP) inner_ip inner_transport_header
+    | Ok (`TCP (src_port, dst_port)) | Ok (`UDP (src_port, dst_port)) ->
                     Log.debug (fun f -> f "ICMP error is for %a src_port=%d dst_port=%d"
                     Ipv4_packet.pp outer_ip src_port dst_port);
       (* When checking for an associated entry in the NAT table, we want to use the port information
