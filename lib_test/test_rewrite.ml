@@ -329,18 +329,18 @@ let test_ping_icmp_error () =
   let endpoint = nat_ip, 81 in
   (* Add rule *)
   Rewriter.add ~now:0L t packet endpoint `NAT
-  >|= Alcotest.check add_result "Add TCP rule" (Ok ()) >>= fun () ->
+  >|= Alcotest.check add_result "Add ICMP rule" (Ok ()) >>= fun () ->
   (* Translate outgoing request *)
   let expected = Constructors.make_icmp ~src:"82.1.1.8" ~dst:"8.8.8.8" (`Echo_request (81, 9, payload)) ~ttl:63 in
   Rewriter.translate t packet
   >|= Alcotest.check translate_result "Apply NAT rule" (Ok expected) >>= fun () ->
   (* Translate reply *)
-  let error_reply_ext = (* ICMP error from web-server to NAT *)
+  let error_reply_ext = (* ICMP error from an intermediate router to NAT *)
     let error = `Unreachable (icmp_error_payload expected) in
-    Constructors.make_icmp ~dst:"82.1.1.8" ~src:"8.8.8.8" error ~ttl:64 in
-  let error_reply_int = (* ICMP error from web-server to internal machine *)
+    Constructors.make_icmp ~dst:"82.1.1.8" ~src:"8.8.8.1" error ~ttl:64 in
+  let error_reply_int = (* ICMP error from intermediate router to internal machine *)
     let error = `Unreachable (icmp_error_payload (dec_ttl packet)) in
-    Constructors.make_icmp ~dst:"192.168.1.5" ~src:"8.8.8.8" error ~ttl:63 in
+    Constructors.make_icmp ~dst:"192.168.1.5" ~src:"8.8.8.1" error ~ttl:63 in
   Rewriter.translate t error_reply_ext
   >|= Alcotest.check translate_result "Map ICMP error" (Ok error_reply_int) >>= fun () ->
   Lwt.return ()
