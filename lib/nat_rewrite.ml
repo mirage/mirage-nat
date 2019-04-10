@@ -210,7 +210,7 @@ module Make(N : Mirage_nat.TABLE) = struct
       (* but only call rewrite_ip on the outer header,
        * since we don't want to decrement the TTL in the inner one *)
        rewrite_ip ~src:new_outer_src ~dst:new_outer_dst outer_ip >>!= fun translated_outer_ip ->
-       let translated_inner_ip = { inner_ip with Ipv4_packet.src = new_inner_dst; dst = new_inner_src } in
+       let translated_inner_ip = { inner_ip with Ipv4_packet.src = new_inner_src; dst = new_inner_dst } in
        (* then, change the encapsulated transport header's port numbers *)
        let translated_inner_transport_payload =
          Icmp_payload.with_channel inner_transport_header channel in
@@ -255,7 +255,7 @@ module Make(N : Mirage_nat.TABLE) = struct
         if 0 = (V4.compare inner_ip.Ipv4_packet.src outer_ip.Ipv4_packet.dst) then
           (* retain the original source in the outer IP *)
           translate_packet ~new_outer_src:outer_ip.Ipv4_packet.src ~new_outer_dst:new_dst
-            ~new_inner_src:new_src ~new_inner_dst:new_dst ~channel:(`ICMP new_id)
+            ~new_inner_src:new_dst ~new_inner_dst:new_src ~channel:(`ICMP new_id)
         else
           translate_packet ~new_outer_src:new_src ~new_outer_dst:new_dst
             ~new_inner_src:new_src ~new_inner_dst:new_dst ~channel:(`ICMP new_id)
@@ -275,8 +275,8 @@ module Make(N : Mirage_nat.TABLE) = struct
       N.TCP.lookup table channel >|= function
       | Some (_expiry, (new_src, new_dst, (new_sport, new_dport))) ->
         translate_packet ~new_outer_src:new_src ~new_outer_dst:new_dst
-          ~new_inner_src:new_src ~new_inner_dst:new_dst
-          ~channel:(`TCP (new_sport, new_dport))
+          ~new_inner_src:new_dst ~new_inner_dst:new_src
+          ~channel:(`TCP (new_dport, new_sport))
       | None -> Error `Untranslated
     end
     | Ok (`UDP (src_port, dst_port)) ->
@@ -284,8 +284,8 @@ module Make(N : Mirage_nat.TABLE) = struct
        N.UDP.lookup table channel >|= function
        | Some (_expiry, (new_src, new_dst, (new_sport, new_dport))) ->
         translate_packet ~new_outer_src:new_src ~new_outer_dst:new_dst
-          ~new_inner_src:new_src ~new_inner_dst:new_dst
-          ~channel:(`UDP (new_sport, new_dport))
+          ~new_inner_src:new_dst ~new_inner_dst:new_src
+          ~channel:(`UDP (new_dport, new_sport))
        | None -> Error `Untranslated
 
 
