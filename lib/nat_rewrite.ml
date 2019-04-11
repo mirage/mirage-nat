@@ -153,7 +153,7 @@ module Make(N : Mirage_nat.TABLE) = struct
 
   let reset = N.reset
 
-  let translate2 table (type t) (module P : PROTOCOL with type transport = t) ip (transport:P.transport) =
+  let translate_by_transport table (type t) (module P : PROTOCOL with type transport = t) ip (transport:P.transport) =
     match P.channel transport with
     | None ->
       Log.debug (fun m -> m "No transport channel");
@@ -204,14 +204,15 @@ module Make(N : Mirage_nat.TABLE) = struct
    +------------------------------------------------------+
 
    *)
-  let icmp_error table ~outer_ip ~icmp ~icmp_payload ~inner_ip ~inner_transport_header =
-    let translate_packet ~new_outer_src ~new_outer_dst ~new_inner_src ~new_inner_dst ~channel =
-      (* translate both the inner and outer IPv4 headers *)
-      (* but only call rewrite_ip on the outer header,
-       * since we don't want to decrement the TTL in the inner one *)
+  let translate_icmp_error table ~outer_ip ~icmp ~icmp_payload ~inner_ip ~inner_transport_header =
+    let rewrite_packet ~new_outer_src ~new_outer_dst ~new_inner_src ~new_inner_dst ~channel =
+      (* rewrite both the inner and outer IPv4 headers *)
+      (* but only call `rewrite_ip` on the outer header, since this decrements the TTL,
+         and while this is appropriate for the outer IPv4 header,
+         we should preserve all non-address fields (including the TTL) in the inner IPv4 header. *)
        rewrite_ip ~src:new_outer_src ~dst:new_outer_dst outer_ip >>!= fun translated_outer_ip ->
        let translated_inner_ip = { inner_ip with Ipv4_packet.src = new_inner_src; dst = new_inner_dst } in
-       (* then, change the encapsulated transport header's port numbers *)
+       (* also, change the encapsulated transport header's port numbers *)
        let translated_inner_transport_payload =
          Icmp_payload.with_channel inner_transport_header channel in
        (* in order to preserve the IPv4 total length from the original message
@@ -230,6 +231,15 @@ module Make(N : Mirage_nat.TABLE) = struct
        (* Encapsulate the inner packet in the translated outer packet. *)
        Ok (`IPv4 (translated_outer_ip, (`ICMP (icmp, translated_icmp_payload))))
     in
+    (* It is necessary to take the inner IPv4 source and destination address,
+       since the outer IPv4 header may come from an intermediate router which
+       won't be represented in the table. *)
+    (* Since we are looking up the information from the inner header, we will need to
+       switch the source and destination to get the correct translation from the NAT
+       table. *)
+    (* When checking for an associated entry in the NAT table, we want to use the port (or ID, for ICMP)
+       information from the inner transport header.  In the TCP/UDP case, these ports then also
+       need to be looked up in reverse order. *)
     match Icmp_payload.get_encapsulated_packet_channel inner_ip inner_transport_header with
     | Error _ as e -> Lwt.return e
     | Ok (`ICMP id) -> begin
@@ -237,7 +247,10 @@ module Make(N : Mirage_nat.TABLE) = struct
          it's just not port-based *)
       let channel = inner_ip.Ipv4_packet.dst, inner_ip.Ipv4_packet.src, id in
       N.ICMP.lookup table channel >|= function
-      | None -> Error `Untranslated
+      | None ->
+        Log.debug (fun f -> f "ICMP error message encapsulating ICMP query with id %d has no matching entry \
+                               in the ICMP NAT table; cannot translate this packet" id);
+        Error `Untranslated
       | Some (_expiry, (new_src, new_dst, new_id)) ->
         (* a rather messy corner case here:
            we might have received an ICMP error message from an intermediate host,
@@ -254,27 +267,19 @@ module Make(N : Mirage_nat.TABLE) = struct
            for the other direction. *)
         if 0 = (V4.compare inner_ip.Ipv4_packet.src outer_ip.Ipv4_packet.dst) then
           (* retain the original source in the outer IP *)
-          translate_packet ~new_outer_src:outer_ip.Ipv4_packet.src ~new_outer_dst:new_dst
+          rewrite_packet ~new_outer_src:outer_ip.Ipv4_packet.src ~new_outer_dst:new_dst
             ~new_inner_src:new_dst ~new_inner_dst:new_src ~channel:(`ICMP new_id)
         else
-          translate_packet ~new_outer_src:new_src ~new_outer_dst:new_dst
+          rewrite_packet ~new_outer_src:new_src ~new_outer_dst:new_dst
             ~new_inner_src:new_src ~new_inner_dst:new_dst ~channel:(`ICMP new_id)
     end
-      (* When checking for an associated entry in the NAT table, we want to use the port information
-         from the inner transport header, along with the IP information. *)
-      (* It is necessary to take the inner IPv4 source and destination address,
-         since the outer IPv4 header may come from an intermediate router which
-         won't be represented in the table. *)
-      (* Since we are looking up the information from the inner header, we will need to
-         switch the source and destination to get the correct translation from the NAT
-         table. *)
       (* The port info is only available in the inner transport header, but it also
          must be reversed in the lookup call in order to get the correct translation. *)
     | Ok (`TCP (src_port, dst_port)) -> begin
       let channel = inner_ip.Ipv4_packet.dst, inner_ip.Ipv4_packet.src, (dst_port, src_port) in
       N.TCP.lookup table channel >|= function
       | Some (_expiry, (new_src, new_dst, (new_sport, new_dport))) ->
-        translate_packet ~new_outer_src:new_src ~new_outer_dst:new_dst
+        rewrite_packet ~new_outer_src:new_src ~new_outer_dst:new_dst
           ~new_inner_src:new_dst ~new_inner_dst:new_src
           ~channel:(`TCP (new_dport, new_sport))
       | None -> Error `Untranslated
@@ -283,7 +288,7 @@ module Make(N : Mirage_nat.TABLE) = struct
        let channel = inner_ip.Ipv4_packet.dst, inner_ip.Ipv4_packet.src, (dst_port, src_port) in
        N.UDP.lookup table channel >|= function
        | Some (_expiry, (new_src, new_dst, (new_sport, new_dport))) ->
-        translate_packet ~new_outer_src:new_src ~new_outer_dst:new_dst
+        rewrite_packet ~new_outer_src:new_src ~new_outer_dst:new_dst
           ~new_inner_src:new_dst ~new_inner_dst:new_src
           ~channel:(`UDP (new_dport, new_sport))
        | None -> Error `Untranslated
@@ -292,17 +297,18 @@ module Make(N : Mirage_nat.TABLE) = struct
   let translate table packet =
     MProf.Trace.label "Nat_rewrite.translate";
     match packet with
-    | `IPv4 (ip, (`TCP _ as transport)) -> translate2 table (module TCP) ip transport
-    | `IPv4 (ip, (`UDP _ as transport)) -> translate2 table (module UDP) ip transport
-    | `IPv4 (ip, (`ICMP (icmp,_) as transport)) when Nat_packet.icmp_type icmp = `Query -> translate2 table (module ICMP) ip transport
+    | `IPv4 (ip, (`TCP _ as transport)) -> translate_by_transport table (module TCP) ip transport
+    | `IPv4 (ip, (`UDP _ as transport)) -> translate_by_transport table (module UDP) ip transport
+    | `IPv4 (ip, (`ICMP (icmp,_) as transport)) when Nat_packet.icmp_type icmp = `Query ->
+      translate_by_transport table (module ICMP) ip transport
     | `IPv4 (outer_ip, `ICMP (icmp, icmp_payload)) ->
       match Ipv4_packet.Unmarshal.header_of_cstruct icmp_payload with
       | Error _ ->
         Log.debug (fun m -> m "Failed to read encapsulated IPv4 packet in ICMP payload: does not parse");
         Lwt.return @@ Error `Untranslated
-      | Ok (inner_ip, inner_untranslated_ip_payload (* also, start of transport header for encapsulated packet *)) ->
-        let inner_transport_header = Cstruct.shift icmp_payload inner_untranslated_ip_payload in
-        icmp_error table ~outer_ip ~inner_ip ~icmp ~icmp_payload ~inner_transport_header
+      | Ok (inner_ip, transport_header_start) ->
+        let inner_transport_header = Cstruct.shift icmp_payload transport_header_start in
+        translate_icmp_error table ~outer_ip ~inner_ip ~icmp ~icmp_payload ~inner_transport_header
 
   let add table ~now packet (xl_host, xl_port) mode =
     let `IPv4 (ip_header, transport) = packet in
