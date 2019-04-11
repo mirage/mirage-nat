@@ -57,7 +57,9 @@ module Storage = struct
       let t = L.table t in
       match L.LRU.find key !t with
       | None -> Lwt.return_none
-      | Some (v, t') -> t := t'; Lwt.return (Some v)
+      | Some v ->
+        t := L.LRU.promote key !t;
+        Lwt.return (Some v)
 
     (* cases that should result in a valid mapping:
        neither side is already mapped *)
@@ -74,6 +76,7 @@ module Storage = struct
           (* TODO: this is not quite right if all mappings already exist, because it's possible that
              the lookups are part of differing pairs -- this situation is pathological, but possible *)
           t := List.fold_left (fun acc (a, b) -> L.LRU.add a (expiry, b) acc) !t mappings;
+          t := L.LRU.trim !t;
           Lwt.return (Ok ())
         )
 
