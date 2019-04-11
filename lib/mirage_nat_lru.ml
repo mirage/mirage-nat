@@ -55,9 +55,7 @@ module Storage = struct
     let lookup t key =
       MProf.Trace.label "Mirage_nat_hashtable.lookup.read";
       let t = L.table t in
-      match L.LRU.find key !t with
-      | None -> Lwt.return_none
-      | Some (v, t') -> t := t'; Lwt.return (Some v)
+      Lwt.return @@ L.LRU.find key !t
 
     (* cases that should result in a valid mapping:
        neither side is already mapped *)
