@@ -111,7 +111,7 @@ module Main
       (* TODO: this may generate low-numbered source ports, which may be treated
          with suspicion by other nodes on the network *)
       let port = Cstruct.BE.get_uint16 (Random.generate 2) 0 in
-      Nat.add table ~now:0L packet (public_ip, port) `NAT >>= function
+      Nat.add table packet (public_ip, port) `NAT >>= function
       | Error e ->
         Log.debug (fun f -> f "Failed to add a NAT rule: %a" Mirage_nat.pp_error e);
         Lwt.return_unit
