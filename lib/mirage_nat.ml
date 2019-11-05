@@ -11,9 +11,9 @@ let pp_error f = function
 
 type time = int64
 
-module type CLOCK = Mirage_clock_lwt.MCLOCK
+module type CLOCK = Mirage_clock.MCLOCK
 
-module type TIME = Mirage_time_lwt.S
+module type TIME = Mirage_time.S
 
 module type S = sig
   type t

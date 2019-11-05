@@ -15,8 +15,8 @@ build: [
 depends: [
   "ipaddr"
   "cstruct"
-  "mirage-time-lwt"
-  "mirage-clock-lwt"
+  "mirage-time" {>= "2.0.0"}
+  "mirage-clock" {>= "3.0.0"}
   "lwt"
   "rresult"
   "logs"
