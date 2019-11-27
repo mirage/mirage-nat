@@ -3,8 +3,13 @@ sudo: required
 install: wget https://raw.githubusercontent.com/ocaml/ocaml-ci-scripts/master/.travis-opam.sh && wget https://raw.githubusercontent.com/ocaml/ocaml-ci-scripts/master/.travis-mirage.sh
 script: bash -ex .travis-opam.sh  && mv .travis-mirage.sh example/ && cd example && bash -ex .travis-mirage.sh
 env:
-  - OCAML_VERSION=4.05 PACKAGE=mirage-nat MIRAGE_BACKEND=xen
-  - OCAML_VERSION=4.06 PACKAGE=mirage-nat MIRAGE_BACKEND=unix
-  - OCAML_VERSION=4.07 PACKAGE=mirage-nat MIRAGE_BACKEND=qubes
+  global:
+    - PACKAGE="mirage-nat"
+    - TESTS=true
+  matrix:
+    - OCAML_VERSION=4.06 MIRAGE_BACKEND=unix
+    - OCAML_VERSION=4.07 MIRAGE_BACKEND=qubes
+    - OCAML_VERSION=4.08 MIRAGE_BACKEND=xen
+    - OCAML_VERSION=4.09 MIRAGE_BACKEND=spt
 os:
   - linux
