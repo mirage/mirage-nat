@@ -4,6 +4,10 @@
 
 let get_dst (`IPv4 (packet, _) : Nat_packet.t) = packet.Ipv4_packet.dst
 
-let try_decompose f packet = match Nat_packet.of_ipv4_packet packet with
-  | Error _ -> Lwt.return_unit
-  | Ok packet -> f packet
+let try_decompose ~cache ~now f packet =
+  match Nat_packet.of_ipv4_packet ~cache ~now:(now ()) packet with
+  | Error e ->
+    Logs.err (fun m -> m "of_ipv4_packet error %a" Nat_packet.pp_error e);
+    Lwt.return_unit
+  | Ok Some packet -> f packet
+  | Ok None -> Lwt.return_unit

@@ -33,22 +33,30 @@ module Constructors = struct
         (Ipv4_packet.Unmarshal.verify_transport_checksum ~ipv4_header ~transport_packet ~proto)
 
   let check_save_restore packet =
-    let raw_to_cstruct = Cstruct.concat @@ Nat_packet.to_cstruct packet in
+    let cache = Fragments.Cache.create 10 in
+    let raw_to_cstruct =
+      match Nat_packet.to_cstruct packet with
+      | Ok [ data ] -> data
+      | _ -> Alcotest.fail "to_cstruct resulted in more fragments";
+    in
     let raw_into_cstruct =
       let buf = Cstruct.create 2048 in
       match Nat_packet.into_cstruct packet buf with
       | Error e -> Alcotest.fail (Fmt.strf "into_cstruct failed: %a" Nat_packet.pp_error e)
-      | Ok n -> Cstruct.sub buf 0 n
+      | Ok (n, []) -> Cstruct.sub buf 0 n
+      | Ok (_, _) -> Alcotest.fail (Fmt.strf "into_cstruct resulted in more fragments")
     in
     assert_checksum_correct raw_to_cstruct;
     assert_checksum_correct raw_into_cstruct;
     let check_packet raw =
-      match Nat_packet.of_ipv4_packet raw with
-      | Ok loaded when Nat_packet.equal packet loaded -> ()
-      | Ok loaded -> Alcotest.fail (Fmt.strf "Packet changed by save/load! Saved:@.%a@.Got:@.%a"
-                                      Nat_packet.pp packet
-                                      Nat_packet.pp loaded
-                                   )
+      match Nat_packet.of_ipv4_packet ~cache ~now:0L raw with
+      | Ok Some loaded when Nat_packet.equal packet loaded -> ()
+      | Ok Some loaded -> Alcotest.fail (Fmt.strf "Packet changed by save/load! Saved:@.%a@.Got:@.%a"
+                                           Nat_packet.pp packet
+                                           Nat_packet.pp loaded
+                                        )
+      | Ok None -> Alcotest.fail (Fmt.strf "Packet changed by save/load! Saved:@.%a@.Got nothing"
+                                    Nat_packet.pp packet)
       | Error e   -> Alcotest.fail (Fmt.strf "Failed to load saved packet! Saved:@.%a@.As:@.%a@.Error: %a"
                                       Nat_packet.pp packet
                                       Cstruct.hexdump_pp raw
@@ -215,6 +223,7 @@ let test_add_nat_valid_pkt () =
   Alcotest.check add_result "Check overlap detection" (Error `Overlap)
 
 let test_add_nat_broadcast () =
+  let cache = Fragments.Cache.create 10 in
   let open Default_values in
   let broadcast_dst = ipv4_of_str "255.255.255.255" in
   let broadcast = Constructors.full_packet ~payload ~proto:`TCP ~ttl:30 ~src
@@ -225,8 +234,8 @@ let test_add_nat_broadcast () =
   Alcotest.check add_result "Ignore broadcast" (Error `Cannot_NAT) >>= fun () ->
   (* try just an ethernet frame *)
   let e = Cstruct.create Ethernet_wire.sizeof_ethernet in
-  Nat_packet.of_ethernet_frame e |> Rresult.R.reword_error ignore
-  |> Alcotest.(check (result packet_t unit)) "Bare ethernet frame" (Error ());
+  Nat_packet.of_ethernet_frame ~cache ~now:0L e |> Rresult.R.reword_error ignore
+  |> Alcotest.(check (result (option packet_t) unit)) "Bare ethernet frame" (Error ());
   Lwt.return ()
 
 let add_many_entries how_many =
@@ -309,13 +318,16 @@ let test_ping () =
   Lwt.return ()
 
 let icmp_error_payload packet =
-  let raw = Cstruct.concat (Nat_packet.to_cstruct packet) in
-  match Ipv4_packet.Unmarshal.of_cstruct raw with
-  | Error e -> Alcotest.fail e
-  | Ok (ip, full_transport) ->
-    let trunc_transport = Cstruct.sub full_transport 0 8 in
-    let payload_len = Cstruct.len full_transport in
-    Cstruct.concat [Ipv4_packet.Marshal.make_cstruct ~payload_len ip; trunc_transport]
+  match Nat_packet.to_cstruct packet with
+  | Ok [ raw ] ->
+    begin match Ipv4_packet.Unmarshal.of_cstruct raw with
+      | Error e -> Alcotest.fail e
+      | Ok (ip, full_transport) ->
+        let trunc_transport = Cstruct.sub full_transport 0 8 in
+        let payload_len = Cstruct.len full_transport in
+        Cstruct.concat [Ipv4_packet.Marshal.make_cstruct ~payload_len ip; trunc_transport]
+    end
+  | _ -> Alcotest.fail "to_cstruct returned error or multiple fragments"
 
 let dec_ttl (`IPv4 (ip, transport)) =
   let ip = Ipv4_packet.{ip with ttl = ip.ttl - 1} in
@@ -432,11 +444,10 @@ let test_tcp_icmp_error () =
 
 let lwt_run f () = Lwt_main.run (f ())
 
-let correct_mappings =
-  [
-    "IPv4 UDP NAT rewrites", `Quick, lwt_run (fun () -> test_nat_ipv4 `UDP) ;
-    "IPv4 TCP NAT rewrites", `Quick, lwt_run (fun () -> test_nat_ipv4 `TCP) ;
-  ]
+let correct_mappings = [
+  "IPv4 UDP NAT rewrites", `Quick, lwt_run (fun () -> test_nat_ipv4 `UDP) ;
+  "IPv4 TCP NAT rewrites", `Quick, lwt_run (fun () -> test_nat_ipv4 `TCP) ;
+]
 
 let add_nat = [
   "add_nat makes entries",            `Quick, lwt_run test_add_nat_valid_pkt;
@@ -448,8 +459,7 @@ let add_nat = [
 ]
 
 let add_redirect = [
-    (* TODO: test add_nat in non-ipv4 contexts; add_redirect more
-    fully *)
+    (* TODO: test add_nat in non-ipv4 contexts; add_redirect more fully *)
     "add_redirect makes entries", `Quick, lwt_run test_add_redirect_valid_pkt;
 ]
 

@@ -42,7 +42,7 @@ let main = foreign "Unikernel.Main" ~packages (network  @-> network  @->
                                                ethernet @-> ethernet @->
                                                arpv4    @-> arpv4    @->
                                                ipv4     @-> ipv4     @->
-                                               random   @-> job)
+                                               random   @-> mclock   @-> job)
 
 (* we need to pass each of the network-related impls we've made to the
    unikernel, so that it can start the appropriate listeners. *)
@@ -51,5 +51,5 @@ let () = register "simple-nat" [ main
                                  $ public_ethernet $ private_ethernet
                                  $ public_arpv4    $ private_arpv4
                                  $ public_ipv4     $ private_ipv4
-                                 $ default_random
+                                 $ default_random  $ default_monotonic_clock
                                ]

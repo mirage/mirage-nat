@@ -1,16 +1,16 @@
 open Lwt.Infix
 
-module Protocols = Mirage_protocols_lwt
+module Protocols = Mirage_protocols
 
 module Main
     (* our unikernel is functorized over the physical, ethernet, ARP, and IPv4
        modules for the public and private interfaces, so each one shows up as
        a module argument. *)
-    (Public_net: Mirage_net_lwt.S) (Private_net: Mirage_net_lwt.S)
+    (Public_net: Mirage_net.S) (Private_net: Mirage_net.S)
     (Public_ethernet : Protocols.ETHERNET) (Private_ethernet : Protocols.ETHERNET)
     (Public_arpv4 : Protocols.ARP) (Private_arpv4 : Protocols.ARP)
     (Public_ipv4 : Protocols.IPV4) (Private_ipv4 : Protocols.IPV4)
-    (Random : Mirage_random.C)
+    (Random : Mirage_random.S) (Clock : Mirage_clock.MCLOCK)
   = struct
 
   (* Use a NAT table implementation which expires entries in response
@@ -31,17 +31,16 @@ module Main
   let start public_netif private_netif
             public_ethernet private_ethernet
             public_arpv4 private_arpv4
-            public_ipv4 _private_ipv4 _random =
+            public_ipv4 _private_ipv4 () () =
 
     (* if writing a packet into a given memory buffer failed,
        log the failure, pass information on how much was written
        to the underlying function (none), and continue.
        This is a convenience function for later calls to `write`. *)
-    let log_write_error = function
-      | Error e -> Log.debug (fun f -> f "Failed to write packet into given buffer: %a"
-                                 Nat_packet.pp_error e);
-        0
-      | Ok n -> n
+    let log_write_error e =
+      Log.err (fun f -> f "Failed to write packet into given buffer: %a"
+                  Nat_packet.pp_error e);
+      0
     in
 
     (* in order to successfully translate, we have to send the packets we've
@@ -61,13 +60,23 @@ module Main
                                 as a failure occurred on the ARP layer");
         Lwt.return_unit
       | Ok destination ->
+        let outs = ref [] in
         Public_ethernet.write public_ethernet destination `IPv4
-          (fun b -> log_write_error @@ Nat_packet.into_cstruct packet b) >>= function
+          (fun b -> match Nat_packet.into_cstruct packet b with
+             | Error e -> log_write_error e
+               | Ok (y, frags) -> outs := frags ; y) >>= function
         | Error e ->
-          Log.debug (fun f -> f "Failed to send packet from public interface: %a"
+          Log.err (fun f -> f "Failed to send packet from public interface: %a"
                         Public_ethernet.pp_error e);
           Lwt.return_unit
-        | Ok () -> Lwt.return_unit
+        | Ok () ->
+          Lwt_list.iter_s (fun f ->
+              let size = Cstruct.len f in
+              Public_ethernet.write public_ethernet destination `IPv4 ~size
+                (fun b -> Cstruct.blit f 0 b 0 size ; size) >|= function
+              | Error e -> Log.err (fun f -> f "Failed to send packet from public interface: %a"
+                                       Public_ethernet.pp_error e)
+              | Ok () -> ()) !outs
     in
 
     let output_private packet =
@@ -78,13 +87,24 @@ module Main
                                 as a failure occurred on the ARP layer");
         Lwt.return_unit
       | Ok destination ->
+        let outs = ref [] in
         Private_ethernet.write private_ethernet destination `IPv4
-          (fun b -> log_write_error @@ Nat_packet.into_cstruct packet b) >>= function
+          (fun b ->
+             match Nat_packet.into_cstruct packet b with
+             | Error e -> log_write_error e
+             | Ok (y, frags) -> outs := frags ; y) >>= function
         | Error e ->
           Log.debug (fun f -> f "Failed to send packet from private interface: %a"
                         Private_ethernet.pp_error e);
           Lwt.return_unit
-        | Ok () -> Lwt.return_unit
+        | Ok () ->
+          Lwt_list.iter_s (fun f ->
+              let size = Cstruct.len f in
+              Private_ethernet.write private_ethernet destination `IPv4 ~size
+                (fun b -> Cstruct.blit f 0 b 0 size ; size) >|= function
+              | Error e -> Log.err (fun f -> f "Failed to send packet from public interface: %a"
+                                       Private_ethernet.pp_error e)
+              | Ok () -> ()) !outs
     in
 
     (* when we see packets on the private interface,
@@ -143,11 +163,12 @@ module Main
        handle ipv4 traffic with the functions we've defined above for NATting,
        and ignore all ipv6 traffic (ipv6 has no need for NAT!). *)
     let listen_public =
+      let cache = Fragments.Cache.create (256 * 1024) in
       let header_size = Ethernet_wire.sizeof_ethernet
       and input =
         Public_ethernet.input
           ~arpv4:(Public_arpv4.input public_arpv4)
-          ~ipv4:(Util.try_decompose (ingest_public table))
+          ~ipv4:(Util.try_decompose ~cache ~now:Clock.elapsed_ns (ingest_public table))
           ~ipv6:(fun _ -> Lwt.return_unit)
           public_ethernet
       in
@@ -159,11 +180,12 @@ module Main
     in
 
     let listen_private =
+      let cache = Fragments.Cache.create (256 * 1024) in
       let header_size = Ethernet_wire.sizeof_ethernet
       and input =
         Private_ethernet.input
           ~arpv4:(Private_arpv4.input private_arpv4)
-          ~ipv4:(Util.try_decompose (ingest_private table))
+          ~ipv4:(Util.try_decompose ~cache ~now:Clock.elapsed_ns (ingest_private table))
           ~ipv6:(fun _ -> Lwt.return_unit)
           private_ethernet
       in
