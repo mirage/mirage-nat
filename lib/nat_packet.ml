@@ -29,7 +29,7 @@ let icmp_type header =
   | Parameter_problem
   | Destination_unreachable -> `Error
 
-let of_ipv4_packet ~cache ~now packet : (t option, error) result =
+let of_ipv4_packet cache ~now packet : (t option, error) result =
   match Ipv4_packet.Unmarshal.of_cstruct packet with
   | Error e ->
     Error (fun f -> Fmt.pf f "Failed to parse IPv4 packet: %s@.%a" e Cstruct.hexdump_pp packet)
@@ -59,7 +59,7 @@ let of_ipv4_packet ~cache ~now packet : (t option, error) result =
       | _ ->
         Error (fun f -> Fmt.pf f "Ignoring non-TCP/UDP packet: %a" Ipv4_packet.pp ip)
 
-let of_ethernet_frame ~cache ~now frame =
+let of_ethernet_frame cache ~now frame =
   match Ethernet_packet.Unmarshal.of_cstruct frame with
   | Error e ->
     Error (fun f -> Fmt.pf f "Failed to parse ethernet frame: %s@.%a" e Cstruct.hexdump_pp frame)
@@ -67,7 +67,7 @@ let of_ethernet_frame ~cache ~now frame =
     match eth.Ethernet_packet.ethertype with
     | `ARP | `IPv6 ->
       Error (fun f -> Fmt.pf f "Ignoring a non-IPv4 frame: %a" Cstruct.hexdump_pp frame)
-    | `IPv4 -> of_ipv4_packet ~cache ~now packet
+    | `IPv4 -> of_ipv4_packet cache ~now packet
 
 let decompose_transport = function
   | `ICMP (_, icmp_payload) -> Icmpv4_wire.sizeof_icmpv4, (Cstruct.len icmp_payload)
@@ -128,7 +128,7 @@ let into_cstruct ((`IPv4 (ip, transport)):t) full_buffer =
   let total_len = ip_header_len + transport_header_len + transport_payload_len in
   let need_fragment = total_len > mtu in
   (* short way out: don't fragment set and buffer too small *)
-  let dont_fragment = ip.off land 0x4000 = 0x400 in
+  let dont_fragment = ip.off land 0x4000 > 0 in
   if dont_fragment && need_fragment then
     Error (fun f -> Fmt.pf f "should send ICMP error back to src, would_fragment")
   else begin

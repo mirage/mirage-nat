@@ -11,10 +11,10 @@ val icmp_type : Icmpv4_packet.t -> [ `Query | `Error ]
 
 val pp_error : error Fmt.t
 
-val of_ethernet_frame : cache:Fragments.Cache.t -> now:int64 -> Cstruct.t ->
+val of_ethernet_frame : Fragments.Cache.t -> now:int64 -> Cstruct.t ->
   (t option, error) result
 
-val of_ipv4_packet : cache:Fragments.Cache.t -> now:int64 -> Cstruct.t ->
+val of_ipv4_packet : Fragments.Cache.t -> now:int64 -> Cstruct.t ->
   (t option, error) result
 
 val to_cstruct : ?mtu:int -> t -> (Cstruct.t list, error) result

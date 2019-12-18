@@ -168,7 +168,7 @@ module Main
       and input =
         Public_ethernet.input
           ~arpv4:(Public_arpv4.input public_arpv4)
-          ~ipv4:(Util.try_decompose ~cache ~now:Clock.elapsed_ns (ingest_public table))
+          ~ipv4:(Util.try_decompose cache ~now:Clock.elapsed_ns (ingest_public table))
           ~ipv6:(fun _ -> Lwt.return_unit)
           public_ethernet
       in
@@ -185,7 +185,7 @@ module Main
       and input =
         Private_ethernet.input
           ~arpv4:(Private_arpv4.input private_arpv4)
-          ~ipv4:(Util.try_decompose ~cache ~now:Clock.elapsed_ns (ingest_private table))
+          ~ipv4:(Util.try_decompose cache ~now:Clock.elapsed_ns (ingest_private table))
           ~ipv6:(fun _ -> Lwt.return_unit)
           private_ethernet
       in
