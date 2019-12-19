@@ -1,3 +1,8 @@
+## v2.0.0 (2019-12-19)
+- support IPv4 fragmentation and reassembly (#36, by @hannesm)
+- remove unused TIME and MCLOCK requirements (#33, by @yomimono)
+- MirageOS 3.7 support (#34, by @hannesm)
+
 ## 1.2.0 (2019-04-15)
 - properly support ICMP error handling, enabling path MTU discovery and traceroute (#26, by @linse and @yomimono)
 - adapt to lru 0.3.0 and use imperative map interface (#29, by @pqwy)
