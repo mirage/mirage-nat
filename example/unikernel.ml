@@ -163,7 +163,7 @@ module Main
        handle ipv4 traffic with the functions we've defined above for NATting,
        and ignore all ipv6 traffic (ipv6 has no need for NAT!). *)
     let listen_public =
-      let cache = Fragments.Cache.create (256 * 1024) in
+      let cache = ref (Fragments.Cache.empty (256 * 1024)) in
       let header_size = Ethernet_wire.sizeof_ethernet
       and input =
         Public_ethernet.input
@@ -180,7 +180,7 @@ module Main
     in
 
     let listen_private =
-      let cache = Fragments.Cache.create (256 * 1024) in
+      let cache = ref (Fragments.Cache.empty (256 * 1024)) in
       let header_size = Ethernet_wire.sizeof_ethernet
       and input =
         Private_ethernet.input
