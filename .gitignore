@@ -1,7 +1,6 @@
-*.byte
-setup.data
-setup.log
 opam/
 log/
-_build
+_build/
 *.swp
+.merlin
+*.install
