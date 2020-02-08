@@ -24,6 +24,7 @@ depends: [
   "dune" {>= "1.0"}
   "tcpip" { >= "4.1.0" }
   "ethernet" { >= "2.0.0" }
+  "stdlib-shims"
   "alcotest" {with-test}
   "mirage-clock-unix" {with-test}
 ]
