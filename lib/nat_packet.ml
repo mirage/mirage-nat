@@ -29,12 +29,14 @@ let icmp_type header =
   | Parameter_problem
   | Destination_unreachable -> `Error
 
-let of_ipv4_packet cache ~now packet : (t option, error) result =
+let of_ipv4_packet cache ~now packet : Fragments.Cache.t * (t option, error) result =
   match Ipv4_packet.Unmarshal.of_cstruct packet with
   | Error e ->
+    cache,
     Error (fun f -> Fmt.pf f "Failed to parse IPv4 packet: %s@.%a" e Cstruct.hexdump_pp packet)
   | Ok (ip_packet, payload) ->
-    match Fragments.process cache now ip_packet payload with
+    let cache', r = Fragments.process cache now ip_packet payload in
+    cache', match r with
     | None -> Ok None
     | Some (ip, transport) ->
       match Ipv4_packet.(Unmarshal.int_to_protocol ip.proto) with
@@ -62,11 +64,11 @@ let of_ipv4_packet cache ~now packet : (t option, error) result =
 let of_ethernet_frame cache ~now frame =
   match Ethernet_packet.Unmarshal.of_cstruct frame with
   | Error e ->
-    Error (fun f -> Fmt.pf f "Failed to parse ethernet frame: %s@.%a" e Cstruct.hexdump_pp frame)
+    cache, Error (fun f -> Fmt.pf f "Failed to parse ethernet frame: %s@.%a" e Cstruct.hexdump_pp frame)
   | Ok (eth, packet) ->
     match eth.Ethernet_packet.ethertype with
     | `ARP | `IPv6 ->
-      Error (fun f -> Fmt.pf f "Ignoring a non-IPv4 frame: %a" Cstruct.hexdump_pp frame)
+      cache, Error (fun f -> Fmt.pf f "Ignoring a non-IPv4 frame: %a" Cstruct.hexdump_pp frame)
     | `IPv4 -> of_ipv4_packet cache ~now packet
 
 let decompose_transport = function

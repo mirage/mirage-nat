@@ -33,7 +33,7 @@ module Constructors = struct
         (Ipv4_packet.Unmarshal.verify_transport_checksum ~ipv4_header ~transport_packet ~proto)
 
   let check_save_restore packet =
-    let cache = Fragments.Cache.create 10 in
+    let cache = Fragments.Cache.empty 10 in
     let raw_to_cstruct =
       match Nat_packet.to_cstruct packet with
       | Ok [ data ] -> data
@@ -49,12 +49,12 @@ module Constructors = struct
     assert_checksum_correct raw_to_cstruct;
     assert_checksum_correct raw_into_cstruct;
     let check_packet raw =
-      match Nat_packet.of_ipv4_packet cache ~now:0L raw with
+      match snd (Nat_packet.of_ipv4_packet cache ~now:0L raw) with
       | Ok Some loaded when Nat_packet.equal packet loaded -> ()
       | Ok Some loaded -> Alcotest.fail (Fmt.strf "Packet changed by save/load! Saved:@.%a@.Got:@.%a"
                                            Nat_packet.pp packet
                                            Nat_packet.pp loaded
-                                        )
+                                           )
       | Ok None -> Alcotest.fail (Fmt.strf "Packet changed by save/load! Saved:@.%a@.Got nothing"
                                     Nat_packet.pp packet)
       | Error e   -> Alcotest.fail (Fmt.strf "Failed to load saved packet! Saved:@.%a@.As:@.%a@.Error: %a"
@@ -223,7 +223,7 @@ let test_add_nat_valid_pkt () =
   Alcotest.check add_result "Check overlap detection" (Error `Overlap)
 
 let test_add_nat_broadcast () =
-  let cache = Fragments.Cache.create 10 in
+  let cache = Fragments.Cache.empty 10 in
   let open Default_values in
   let broadcast_dst = ipv4_of_str "255.255.255.255" in
   let broadcast = Constructors.full_packet ~payload ~proto:`TCP ~ttl:30 ~src
@@ -234,7 +234,7 @@ let test_add_nat_broadcast () =
   Alcotest.check add_result "Ignore broadcast" (Error `Cannot_NAT) >>= fun () ->
   (* try just an ethernet frame *)
   let e = Cstruct.create Ethernet_wire.sizeof_ethernet in
-  Nat_packet.of_ethernet_frame cache ~now:0L e |> Rresult.R.reword_error ignore
+  Nat_packet.of_ethernet_frame cache ~now:0L e |> snd |> Rresult.R.reword_error ignore
   |> Alcotest.(check (result (option packet_t) unit)) "Bare ethernet frame" (Error ());
   Lwt.return ()
 
@@ -535,12 +535,12 @@ let test_of_ipv4_packet_reassembly_basic () =
   let packet = gen_icmp 1473 in
   match Nat_packet.to_cstruct ~mtu:1500 packet with
   | Ok [ init; more ] ->
-    let cache = Fragments.Cache.create (128 * 1024)
+    let cache = Fragments.Cache.empty (128 * 1024)
     and now = 0L
     in
     begin match Nat_packet.of_ipv4_packet cache ~now init with
-      | Ok None ->
-        begin match Nat_packet.of_ipv4_packet cache ~now more with
+      | cache', Ok None ->
+        begin match snd (Nat_packet.of_ipv4_packet cache' ~now more) with
           | Ok Some pkt -> Alcotest.check packet_t __LOC__ packet pkt
           | _ -> Alcotest.fail "expecting a packet"
         end
