@@ -1,3 +1,10 @@
+## v2.1.0 (2020-02-18)
+- support tcpip 4.1.0, which Ipv4.Fragments interface changed from LRU.M to LRU.F
+- Mirage_nat_lru uses as well a LRU.F again
+- breaking: Nat_packet.of_ipv4_frame / of_ethernet_frame output a pair of
+  `Fragments.t * (t option, error) result`
+- all in #37 by @hannesm
+
 ## v2.0.0 (2019-12-19)
 - support IPv4 fragmentation and reassembly (#36, by @hannesm)
 - remove unused TIME and MCLOCK requirements (#33, by @yomimono)
