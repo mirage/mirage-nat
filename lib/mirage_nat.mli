@@ -10,8 +10,16 @@ type error = [
 
 val pp_error : [< error] Fmt.t
 
+type ports = {
+  tcp : port list ;
+  udp : port list ;
+}
+
 module type S = sig
   type t
+
+  val remove_connections : t -> Ipaddr.V4.t -> ports
+  (** [remove_connections t ip] removes all connections of [ip] in [t]. *)
 
   val translate : t -> Nat_packet.t -> (Nat_packet.t, [> `Untranslated | `TTL_exceeded]) result Lwt.t
   (** Given a lookup table and an ip-level packet,
@@ -89,4 +97,7 @@ module type TABLE = sig
 
   val reset : t -> unit Lwt.t
   (** Remove all entries from the table. *)
+
+  val remove_connections : t -> Ipaddr.V4.t -> ports
+  (** Remove all connections from and to the given IP address. *)
 end

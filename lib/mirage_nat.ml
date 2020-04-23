@@ -9,8 +9,14 @@ let pp_error f = function
   | `Untranslated -> Fmt.string f "Packet not translated"
   | `TTL_exceeded -> Fmt.string f "TTL exceeded"
 
+type ports = {
+  tcp : port list ;
+  udp : port list ;
+}
+
 module type S = sig
   type t
+  val remove_connections : t -> Ipaddr.V4.t -> ports
   val translate : t -> Nat_packet.t -> (Nat_packet.t, [> `Untranslated | `TTL_exceeded]) result Lwt.t
   val add : t -> Nat_packet.t -> endpoint -> [`NAT | `Redirect of endpoint] -> (unit, [> `Overlap | `Cannot_NAT]) result Lwt.t
   val reset : t -> unit Lwt.t
@@ -36,4 +42,6 @@ module type TABLE = sig
 
   val reset : t -> unit Lwt.t
   (** Remove all entries from the table. *)
+
+  val remove_connections : t -> Ipaddr.V4.t -> ports
 end

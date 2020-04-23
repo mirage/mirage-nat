@@ -140,6 +140,7 @@ module Make(N : Mirage_nat.TABLE) = struct
   end
 
   let reset = N.reset
+  let remove_connections = N.remove_connections
 
   let translate_by_transport table (type t) (module P : PROTOCOL with type transport = t) ip (transport:P.transport) =
     match P.channel transport with
