@@ -31,7 +31,7 @@ module Main
   let start public_netif private_netif
             public_ethernet private_ethernet
             public_arpv4 private_arpv4
-            public_ipv4 _private_ipv4 () () =
+            public_ipv4 _private_ipv4 _rng () =
 
     (* if writing a packet into a given memory buffer failed,
        log the failure, pass information on how much was written
