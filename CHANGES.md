@@ -1,3 +1,7 @@
+## v2.2.0 (2020-05-04)
+- Add rmove_connections : t -> Ipaddr.V4.t -> { tcp : int list ; udp : int list }
+  to drop all connections from the NAT table for the given IP address. (#39 by @linse @hannesm)
+
 ## v2.1.0 (2020-02-18)
 - support tcpip 4.1.0, which Ipv4.Fragments interface changed from LRU.M to LRU.F
 - Mirage_nat_lru uses as well a LRU.F again
