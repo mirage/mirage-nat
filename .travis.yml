@@ -7,9 +7,9 @@ env:
     - PACKAGE="mirage-nat"
     - TESTS=true
   matrix:
-    - OCAML_VERSION=4.06 MIRAGE_BACKEND=unix
     - OCAML_VERSION=4.07 MIRAGE_BACKEND=qubes
     - OCAML_VERSION=4.08 MIRAGE_BACKEND=xen
-    - OCAML_VERSION=4.09 MIRAGE_BACKEND=spt
+    - OCAML_VERSION=4.09 MIRAGE_BACKEND=unix
+    - OCAML_VERSION=4.10 MIRAGE_BACKEND=spt
 os:
   - linux

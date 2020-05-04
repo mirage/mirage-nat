@@ -91,11 +91,36 @@ module Storage = struct
   module UDP  = Subtable(struct module LRU = Port_cache let table t = t.udp  type transport_channel = Mirage_nat.port * Mirage_nat.port end)
   module ICMP = Subtable(struct module LRU = Id_cache   let table t = t.icmp type transport_channel = Cstruct.uint16                    end)
 
+  (* TODO remove Lwt.t *)
   let reset t =
     t.tcp := t.defaults.empty_tcp;
     t.udp := t.defaults.empty_udp;
     t.icmp := t.defaults.empty_icmp;
     Lwt.return ()
+
+  let remove_connections t ip =
+    let (=) a b = Ipaddr.V4.compare a b = 0 in
+    let drop_connections empty table =
+      Port_cache.fold (fun ((src, _, _) as k) ((src', _, (xl_port, _)) as v) (acc, ports) ->
+        if ip = src then
+          acc, xl_port :: ports
+        else if ip = src' then
+          acc, ports
+        else
+          Port_cache.add k v acc, ports) (empty, []) table
+    in
+    let tcp, freed_tcp_ports = drop_connections t.defaults.empty_tcp !(t.tcp) in
+    t.tcp := tcp;
+    let udp, freed_udp_ports = drop_connections t.defaults.empty_udp !(t.udp) in
+    t.udp := udp;
+    let icmp = Id_cache.fold (fun ((src, _, _) as k) ((src', _, _) as v) acc ->
+       if ip = src || ip = src' then
+         acc
+       else
+         Id_cache.add k v acc) t.defaults.empty_icmp !(t.icmp)
+    in
+    t.icmp := icmp;
+    Mirage_nat.{ tcp = freed_tcp_ports ; udp = freed_udp_ports }
 
   let empty ~tcp_size ~udp_size ~icmp_size =
     let defaults = {
