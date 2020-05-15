@@ -1,5 +1,8 @@
+## v2.2.1 (2020-05-15)
+- Also report freed ICMP ports in remove_connections (#40 by @linse @hannesm)
+
 ## v2.2.0 (2020-05-04)
-- Add rmove_connections : t -> Ipaddr.V4.t -> { tcp : int list ; udp : int list }
+- Add remove_connections : t -> Ipaddr.V4.t -> { tcp : int list ; udp : int list }
   to drop all connections from the NAT table for the given IP address. (#39 by @linse @hannesm)
 
 ## v2.1.0 (2020-02-18)
