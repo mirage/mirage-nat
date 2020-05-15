@@ -113,14 +113,17 @@ module Storage = struct
     t.tcp := tcp;
     let udp, freed_udp_ports = drop_connections t.defaults.empty_udp !(t.udp) in
     t.udp := udp;
-    let icmp = Id_cache.fold (fun ((src, _, _) as k) ((src', _, _) as v) acc ->
-       if ip = src || ip = src' then
-         acc
-       else
-         Id_cache.add k v acc) t.defaults.empty_icmp !(t.icmp)
+    let icmp, freed_icmp_ports =
+      Id_cache.fold (fun ((src, _, _) as k) ((src', _, xl_port) as v) (acc, ports) ->
+        if ip = src then
+          acc, xl_port :: ports
+        else if ip = src' then
+          acc, ports
+        else
+          Id_cache.add k v acc, ports) (t.defaults.empty_icmp, []) !(t.icmp)
     in
     t.icmp := icmp;
-    Mirage_nat.{ tcp = freed_tcp_ports ; udp = freed_udp_ports }
+    Mirage_nat.{ tcp = freed_tcp_ports ; udp = freed_udp_ports ; icmp = freed_icmp_ports }
 
   let empty ~tcp_size ~udp_size ~icmp_size =
     let defaults = {
