@@ -12,6 +12,7 @@ let pp_error f = function
 type ports = {
   tcp : port list ;
   udp : port list ;
+  icmp : port list ;
 }
 
 module type S = sig

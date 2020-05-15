@@ -13,6 +13,7 @@ val pp_error : [< error] Fmt.t
 type ports = {
   tcp : port list ;
   udp : port list ;
+  icmp : port list ;
 }
 
 module type S = sig
