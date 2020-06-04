@@ -265,7 +265,7 @@ let add_many_entries how_many =
   let open Rewriter in
   Rewriter.empty ~tcp_size:how_many ~udp_size:how_many ~icmp_size:how_many >>= fun t ->
   let rec shove_entries = function
-    | n when n <= 0 -> Lwt.return_unit
+    | n when n <= 0 -> Lwt.return t
     | n ->
       Printf.printf "%d more entries...\n%!" n;
       let packet = random_packet () in
@@ -296,6 +296,15 @@ let add_many_entries how_many =
         | Ok () -> shove_entries (n-1)
   in
   shove_entries how_many
+
+let add_and_remove_many_entries how_many =
+  let gc_settings = Gc.get () in
+  Gc.set { gc_settings with Gc.stack_limit = 256 };
+  let fake_ip = Ipaddr.V4.localhost in
+  add_many_entries how_many >>= fun t ->
+  let _ = Rewriter.remove_connections t fake_ip in
+  Gc.set gc_settings;
+  Lwt.return_unit
 
 let test_ping () =
   Rewriter.empty ~tcp_size:10 ~udp_size:10 ~icmp_size:10 >>= fun t ->
@@ -570,7 +579,9 @@ let add_redirect = [
 
 let many_entries = [
   "many entries are added successfully", `Quick, lwt_run (fun () ->
-      add_many_entries 200);
+      add_many_entries 200 >>= fun _ -> Lwt.return_unit);
+  "many entries are added and remove_connection called", `Quick, lwt_run (fun () ->
+      add_and_remove_many_entries 500);
 ]
 
 let fragmentation = [

@@ -5,6 +5,6 @@
 (alias
  (name runtest)
  (deps
-  (:< test_rewrite.exe))
+  (:< test_rewrite.bc))
  (action
   (run %{<})))
