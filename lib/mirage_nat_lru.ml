@@ -100,28 +100,25 @@ module Storage = struct
 
   let remove_connections t ip =
     let (=) a b = Ipaddr.V4.compare a b = 0 in
-    let drop_connections empty table =
-      Port_cache.fold (fun ((src, _, _) as k) ((src', _, (xl_port, _)) as v) (acc, ports) ->
-        if ip = src then
-          acc, xl_port :: ports
-        else if ip = src' then
-          acc, ports
-        else
-          Port_cache.add k v acc, ports) (empty, []) table
+    let rec remove pop_lru add f t_old t freed_ports =
+      match pop_lru t_old with
+      | None -> t, freed_ports
+      | Some ((((src, _, _) as k), ((src', _, data) as v)), t_old) ->
+        let t, freed_ports =
+          if ip = src then
+            t, f data :: freed_ports
+          else if ip = src' then
+            t, freed_ports
+          else
+            add k v t, freed_ports
+        in
+        remove pop_lru add f t_old t freed_ports
     in
-    let tcp, freed_tcp_ports = drop_connections t.defaults.empty_tcp !(t.tcp) in
+    let tcp, freed_tcp_ports = remove Port_cache.pop_lru Port_cache.add fst !(t.tcp) t.defaults.empty_tcp [] in
     t.tcp := tcp;
-    let udp, freed_udp_ports = drop_connections t.defaults.empty_udp !(t.udp) in
+    let udp, freed_udp_ports = remove Port_cache.pop_lru Port_cache.add fst !(t.udp) t.defaults.empty_udp [] in
     t.udp := udp;
-    let icmp, freed_icmp_ports =
-      Id_cache.fold (fun ((src, _, _) as k) ((src', _, xl_port) as v) (acc, ports) ->
-        if ip = src then
-          acc, xl_port :: ports
-        else if ip = src' then
-          acc, ports
-        else
-          Id_cache.add k v acc, ports) (t.defaults.empty_icmp, []) !(t.icmp)
-    in
+    let icmp, freed_icmp_ports = remove Id_cache.pop_lru Id_cache.add (fun x -> x) !(t.icmp) t.defaults.empty_icmp [] in
     t.icmp := icmp;
     Mirage_nat.{ tcp = freed_tcp_ports ; udp = freed_udp_ports ; icmp = freed_icmp_ports }
 
