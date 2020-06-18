@@ -1,3 +1,8 @@
+## v2.2.2 (2020-06-18)
+- Avoid stack overflow in remove_connections (#42 by @linse @hannesm,
+  reported by @talex5 in mirage/qubes-mirage-firewall#105)
+- Compatibilty with ipaddr 5.0.0 (#41 by @hannesm)
+
 ## v2.2.1 (2020-05-15)
 - Also report freed ICMP ports in remove_connections (#40 by @linse @hannesm)
 
