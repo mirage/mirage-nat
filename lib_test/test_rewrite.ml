@@ -1,4 +1,3 @@
-open Ipaddr
 open Lwt.Infix
 
 let ipv4_of_str = Ipaddr.V4.of_string_exn
@@ -242,7 +241,7 @@ let add_many_entries how_many =
   let random_ttl () = (Random.int 255) + 1 in
   let rec random_ipv4 () =
     let addr = Ipaddr.V4.of_int32 (Random.int32 Int32.max_int) in
-    match scope (V4 addr) with
+    match Ipaddr.scope (V4 addr) with
     | Global | Organization -> addr
     | Point | Link | Interface | Site | Admin ->
       Printf.printf "unusable address %s generated; trying again\n%!" (Ipaddr.V4.to_string addr);
