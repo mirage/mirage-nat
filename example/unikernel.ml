@@ -49,7 +49,7 @@ module Main
        be trying to think hard about translations. *)
     let output_public packet =
       let gateway = Key_gen.public_ipv4_gateway () in
-      let network = fst @@ Key_gen.public_ipv4 () in
+      let network = Key_gen.public_ipv4 () in
       Public_routing.destination_mac network gateway public_arpv4 (Util.get_dst packet) >>= function
       | Error `Local ->
         Log.debug (fun f -> f "Could not send a packet from the public interface to the local network,\
@@ -80,7 +80,7 @@ module Main
     in
 
     let output_private packet =
-      let network = fst @@ Key_gen.private_ipv4 () in
+      let network = Key_gen.private_ipv4 () in
       Private_routing.destination_mac network None private_arpv4 (Util.get_dst packet) >>= function
       | Error _ ->
         Log.debug (fun f -> f "Could not send a packet from the private interface to the local network,\
