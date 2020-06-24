@@ -33,6 +33,7 @@ let private_ipv4 = create_ipv4 ~group:"private" private_ethernet private_arpv4
 let packages = [
   package "mirage-nat";
   package ~min:"4.0.0" "mirage-protocols";
+  package ~min:"3.8.0" "mirage-runtime";
 ]
 
 (* our unikernel needs to know about physical network, ethernet, arp, and ipv4
