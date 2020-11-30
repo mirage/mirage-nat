@@ -1,6 +1,6 @@
 (executables
  (names test_rewrite)
- (libraries mirage-nat tcpip.ipv4 alcotest logs lwt.unix logs.fmt))
+ (libraries mirage-nat tcpip.ipv4 alcotest logs lwt.unix logs.fmt tcpip.unix))
 
 (alias
  (name runtest)
