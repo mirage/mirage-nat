@@ -1,3 +1,7 @@
+## v2.2.3 (2020-11-30)
+- example: adapt to mirage 3.8 changes (#43 @hannesm)
+- tests: depend on tcpip.unix for tcpip 6.0.0 compatibility (#44 @hannesm)
+
 ## v2.2.2 (2020-06-18)
 - Avoid stack overflow in remove_connections (#42 by @linse @hannesm,
   reported by @talex5 in mirage/qubes-mirage-firewall#105)
