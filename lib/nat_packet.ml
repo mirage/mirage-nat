@@ -72,11 +72,11 @@ let of_ethernet_frame cache ~now frame =
     | `IPv4 -> of_ipv4_packet cache ~now packet
 
 let decompose_transport = function
-  | `ICMP (_, icmp_payload) -> Icmpv4_wire.sizeof_icmpv4, (Cstruct.len icmp_payload)
-  | `UDP (_, udp_payload) -> Udp_wire.sizeof_udp, (Cstruct.len udp_payload)
+  | `ICMP (_, icmp_payload) -> Icmpv4_wire.sizeof_icmpv4, (Cstruct.length icmp_payload)
+  | `UDP (_, udp_payload) -> Udp_wire.sizeof_udp, (Cstruct.length udp_payload)
   | `TCP (tcp_header, tcp_payload) ->
     let options_length = Tcp.Options.lenv tcp_header.Tcp.Tcp_packet.options in
-    (Tcp.Tcp_wire.sizeof_tcp + options_length), (Cstruct.len tcp_payload)
+    (Tcp.Tcp_wire.sizeof_tcp + options_length), (Cstruct.length tcp_payload)
 
 let to_cstruct ?(mtu = 1500) ((`IPv4 (ip, transport)):t) =
   let {Ipv4_packet.src; dst; _} = ip in
@@ -92,7 +92,7 @@ let to_cstruct ?(mtu = 1500) ((`IPv4 (ip, transport)):t) =
       Logs.debug (fun f -> f "ICMP header written: %a" Cstruct.hexdump_pp transport_header);
       transport_header, payload
     | `UDP (udp_header, udp_payload) ->
-      let pseudoheader = Ipv4_packet.Marshal.pseudoheader ~src ~dst ~proto:`UDP (Cstruct.len udp_payload + Udp_wire.sizeof_udp) in
+      let pseudoheader = Ipv4_packet.Marshal.pseudoheader ~src ~dst ~proto:`UDP (Cstruct.length udp_payload + Udp_wire.sizeof_udp) in
       let transport_header = Udp_packet.Marshal.make_cstruct
         ~pseudoheader udp_header
         ~payload:udp_payload in
@@ -100,7 +100,7 @@ let to_cstruct ?(mtu = 1500) ((`IPv4 (ip, transport)):t) =
       transport_header, udp_payload
     | `TCP (tcp_header, tcp_payload) ->
       let options_length = transport_header_len - Tcp.Tcp_wire.sizeof_tcp in
-      let pseudoheader = Ipv4_packet.Marshal.pseudoheader ~src ~dst ~proto:`TCP (Tcp.Tcp_wire.sizeof_tcp + options_length + Cstruct.len tcp_payload) in
+      let pseudoheader = Ipv4_packet.Marshal.pseudoheader ~src ~dst ~proto:`TCP (Tcp.Tcp_wire.sizeof_tcp + options_length + Cstruct.length tcp_payload) in
       let transport_header = Tcp.Tcp_packet.Marshal.make_cstruct
         ~pseudoheader tcp_header
         ~payload:tcp_payload in
@@ -108,7 +108,7 @@ let to_cstruct ?(mtu = 1500) ((`IPv4 (ip, transport)):t) =
       transport_header, tcp_payload
   in
   let payload = Cstruct.append transport_hdr transport_payload in
-  let plen = Cstruct.len payload in
+  let plen = Cstruct.length payload in
   let pmtu = mtu - Ipv4_wire.sizeof_ipv4 in
   let need_fragment = plen > pmtu in
   if need_fragment && ip.Ipv4_packet.off land 0x4000 > 0 then
@@ -116,16 +116,16 @@ let to_cstruct ?(mtu = 1500) ((`IPv4 (ip, transport)):t) =
   else
     let ip = if need_fragment then { ip with off = 0x2000 } else ip in
     let first, rest = if need_fragment then Cstruct.split payload pmtu else payload, Cstruct.empty in
-    let ip_header = Ipv4_packet.Marshal.make_cstruct ~payload_len:(Cstruct.len first) ip in
+    let ip_header = Ipv4_packet.Marshal.make_cstruct ~payload_len:(Cstruct.length first) ip in
     let frags = if need_fragment then Fragments.fragment ~mtu ip rest else [] in
     Ok (Cstruct.append ip_header first :: frags)
 
 let into_cstruct ((`IPv4 (ip, transport)):t) full_buffer =
   let open Rresult.R in
   let {Ipv4_packet.src; dst; _} = ip in
-  let mtu = Cstruct.len full_buffer in
+  let mtu = Cstruct.length full_buffer in
   (* Calculate required buffer size *)
-  let ip_header_len = Ipv4_wire.sizeof_ipv4 + Cstruct.len ip.Ipv4_packet.options in
+  let ip_header_len = Ipv4_wire.sizeof_ipv4 + Cstruct.length ip.Ipv4_packet.options in
   let transport_header_len, transport_payload_len = decompose_transport transport in
   let total_len = ip_header_len + transport_header_len + transport_payload_len in
   let need_fragment = total_len > mtu in
@@ -146,7 +146,7 @@ let into_cstruct ((`IPv4 (ip, transport)):t) full_buffer =
       match transport with
       | `ICMP (icmp_header, payload) -> begin
           let this, left = Cstruct.split payload this_transport_payload_len in
-          Cstruct.blit this 0 full_buffer payload_start (Cstruct.len this);
+          Cstruct.blit this 0 full_buffer payload_start (Cstruct.length this);
           match Icmpv4_packet.Marshal.into_cstruct icmp_header ~payload (Cstruct.shift full_buffer ip_header_len) with
           | Error s -> Error (fun f -> Fmt.pf f "Error writing ICMPv4 packet: %s" s);
           | Ok () ->
@@ -156,7 +156,7 @@ let into_cstruct ((`IPv4 (ip, transport)):t) full_buffer =
       | `UDP (udp_header, udp_payload) -> begin
           let this, left = Cstruct.split udp_payload this_transport_payload_len in
           Cstruct.blit this 0 full_buffer payload_start this_transport_payload_len;
-          let pseudoheader = Ipv4_packet.Marshal.pseudoheader ~src ~dst ~proto:`UDP (Cstruct.len udp_payload + Udp_wire.sizeof_udp) in
+          let pseudoheader = Ipv4_packet.Marshal.pseudoheader ~src ~dst ~proto:`UDP (Cstruct.length udp_payload + Udp_wire.sizeof_udp) in
           match Udp_packet.Marshal.into_cstruct
                   ~pseudoheader ~payload:udp_payload udp_header
                   (Cstruct.shift full_buffer ip_header_len) with
@@ -181,7 +181,7 @@ let into_cstruct ((`IPv4 (ip, transport)):t) full_buffer =
         end
     in
     write_transport_header_and_payload transport >>= fun (written, leftover) ->
-    let need_fragment = Cstruct.len leftover > 0 in
+    let need_fragment = Cstruct.length leftover > 0 in
     let off = if need_fragment then 0x2000 else 0x0000 in
     let ip' = { ip with off } in
     (* Write the IP header into the first part of the buffer. *)

@@ -14,7 +14,7 @@ let rewrite_ip ~src ~dst ip =
 
 module Icmp_payload = struct
   let get_encapsulated_packet_channel ip payload =
-    if Cstruct.len payload < 8 then (
+    if Cstruct.length payload < 8 then (
       Log.debug (fun m -> m "Payload too short to analyze");
       Error `Untranslated)
     else match Ipv4_packet.Unmarshal.int_to_protocol ip.Ipv4_packet.proto with
@@ -24,7 +24,7 @@ module Icmp_payload = struct
       | _ -> Error `Untranslated
 
   let dup src =
-    let len = Cstruct.len src in
+    let len = Cstruct.length src in
     let copy = Cstruct.create_unsafe len in
     Cstruct.blit src 0 copy 0 len;
     copy
@@ -208,7 +208,7 @@ module Make(N : Mirage_nat.TABLE) = struct
         * (which might be incorrect due to truncation of the ICMP error message),
         * retrieve this value from the ICMP payload, which is also the inner IP header.
         * This is replicating some non-exposed logic from the tcpip library's Ipv4_packet module. *)
-       let original_inner_ipv4_header_length = 20 + (Cstruct.len inner_ip.options) in
+       let original_inner_ipv4_header_length = 20 + (Cstruct.length inner_ip.options) in
        let original_inner_ipv4_total_length = Ipv4_wire.get_ipv4_len icmp_payload in
        let original_inner_ipv4_payload_length = original_inner_ipv4_total_length - original_inner_ipv4_header_length in
        (* Now we can reassemble the translated inner packet

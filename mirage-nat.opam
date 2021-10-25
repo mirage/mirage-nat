@@ -8,14 +8,14 @@ dev-repo: "git+https://github.com/mirage/mirage-nat.git"
 doc: "https://mirage.github.io/mirage-nat/"
 license: "ISC"
 build: [
-  ["dune" "subst"] {pinned}
+  ["dune" "subst"] {dev}
   ["dune" "build" "-p" name "-j" jobs]
   ["dune" "runtest" "-p" name "-j" jobs] {with-test}
 ]
 depends: [
   "ocaml" {>= "4.06.0"}
   "ipaddr"
-  "cstruct"
+  "cstruct" {>= "6.0.0"}
   "lwt"
   "rresult"
   "logs"
@@ -27,6 +27,7 @@ depends: [
   "stdlib-shims"
   "alcotest" {with-test}
   "mirage-clock-unix" {with-test}
+  "fmt" {with-test & >= "0.8.7"}
 ]
 synopsis: "Mirage-nat is a library for network address translation to be used with MirageOS"
 description: """

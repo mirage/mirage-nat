@@ -71,7 +71,7 @@ module Main
           Lwt.return_unit
         | Ok () ->
           Lwt_list.iter_s (fun f ->
-              let size = Cstruct.len f in
+              let size = Cstruct.length f in
               Public_ethernet.write public_ethernet destination `IPv4 ~size
                 (fun b -> Cstruct.blit f 0 b 0 size ; size) >|= function
               | Error e -> Log.err (fun f -> f "Failed to send packet from public interface: %a"
@@ -99,7 +99,7 @@ module Main
           Lwt.return_unit
         | Ok () ->
           Lwt_list.iter_s (fun f ->
-              let size = Cstruct.len f in
+              let size = Cstruct.length f in
               Private_ethernet.write private_ethernet destination `IPv4 ~size
                 (fun b -> Cstruct.blit f 0 b 0 size ; size) >|= function
               | Error e -> Log.err (fun f -> f "Failed to send packet from public interface: %a"
