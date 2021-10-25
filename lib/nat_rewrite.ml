@@ -5,7 +5,7 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 open Lwt.Infix
 
-let (>>!=) = Rresult.R.bind
+let ( let* ) = Result.bind
 
 let rewrite_ip ~src ~dst ip =
   match ip.Ipv4_packet.ttl with
@@ -152,7 +152,7 @@ module Make(N : Mirage_nat.TABLE) = struct
       let dst = ip.Ipv4_packet.dst in
       P.Table.lookup table (src, dst, transport_channel) >|= function
       | Some (src, dst, new_transport_channel) ->
-        rewrite_ip ~src ~dst ip >>!= fun new_ip_header ->
+        let* new_ip_header = rewrite_ip ~src ~dst ip in
         Ok (P.rewrite ~new_ip_header transport new_transport_channel)
       | None ->
         Log.debug (fun m -> m "No rule matching channel");
@@ -199,7 +199,7 @@ module Make(N : Mirage_nat.TABLE) = struct
       (* but only call `rewrite_ip` on the outer header, since this decrements the TTL,
          and while this is appropriate for the outer IPv4 header,
          we should preserve all non-address fields (including the TTL) in the inner IPv4 header. *)
-       rewrite_ip ~src:new_outer_src ~dst:new_outer_dst outer_ip >>!= fun translated_outer_ip ->
+       let* translated_outer_ip = rewrite_ip ~src:new_outer_src ~dst:new_outer_dst outer_ip in
        let translated_inner_ip = { inner_ip with Ipv4_packet.src = new_inner_src; dst = new_inner_dst } in
        (* also, change the encapsulated transport header's port numbers *)
        let translated_inner_transport_payload =

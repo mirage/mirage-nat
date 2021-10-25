@@ -233,8 +233,9 @@ let test_add_nat_broadcast () =
   Alcotest.check add_result "Ignore broadcast" (Error `Cannot_NAT) >>= fun () ->
   (* try just an ethernet frame *)
   let e = Cstruct.create Ethernet_wire.sizeof_ethernet in
-  Nat_packet.of_ethernet_frame cache ~now:0L e |> snd |> Rresult.R.reword_error ignore
-  |> Alcotest.(check (result (option packet_t) unit)) "Bare ethernet frame" (Error ());
+  let r = Nat_packet.of_ethernet_frame cache ~now:0L e |> snd in
+  let r = match r with Ok _ as a -> a | Error _ -> Error () in
+  Alcotest.(check (result (option packet_t) unit)) "Bare ethernet frame" (Error ()) r;
   Lwt.return ()
 
 let add_many_entries how_many =
