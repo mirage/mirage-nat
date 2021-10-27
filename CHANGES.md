@@ -1,3 +1,9 @@
+## v2.2.4 (2021-10-27)
+- avoid deprecated Cstruct.len, use Cstruct.length (#45 @hannesm)
+- remove rresult dependency (#45 @hannesm)
+- raise lower OCaml version to 4.08.0 (#45 @hannesm)
+- remove stdlib-shims dependency (#45 @hannesm)
+
 ## v2.2.3 (2020-11-30)
 - example: adapt to mirage 3.8 changes (#43 @hannesm)
 - tests: depend on tcpip.unix for tcpip 6.0.0 compatibility (#44 @hannesm)
