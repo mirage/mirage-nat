@@ -1,10 +1,4 @@
-(executables
- (names test_rewrite)
+(test
+ (name test_rewrite)
+ (modules test_rewrite)
  (libraries mirage-nat tcpip.ipv4 alcotest logs lwt.unix logs.fmt tcpip.unix))
-
-(alias
- (name runtest)
- (deps
-  (:< test_rewrite.bc))
- (action
-  (run %{<})))
