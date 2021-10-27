@@ -16,8 +16,6 @@ depends: [
   "ocaml" {>= "4.08.0"}
   "ipaddr"
   "cstruct" {>= "6.0.0"}
-  "lwt"
-  "logs"
   "lru" {>= "0.3.0"}
   "ppx_deriving" {>= "4.2" }
   "dune" {>= "1.0"}
@@ -27,6 +25,8 @@ depends: [
   "alcotest" {with-test}
   "mirage-clock-unix" {with-test}
   "fmt" {with-test & >= "0.8.7"}
+  "lwt" {with-test}
+  "logs" {with-test}
 ]
 synopsis: "Mirage-nat is a library for network address translation to be used with MirageOS"
 description: """
