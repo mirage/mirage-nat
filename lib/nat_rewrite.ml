@@ -5,7 +5,7 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 open Lwt.Infix
 
-let (>>!=) = Rresult.R.bind
+let ( let* ) = Result.bind
 
 let rewrite_ip ~src ~dst ip =
   match ip.Ipv4_packet.ttl with
@@ -14,7 +14,7 @@ let rewrite_ip ~src ~dst ip =
 
 module Icmp_payload = struct
   let get_encapsulated_packet_channel ip payload =
-    if Cstruct.len payload < 8 then (
+    if Cstruct.length payload < 8 then (
       Log.debug (fun m -> m "Payload too short to analyze");
       Error `Untranslated)
     else match Ipv4_packet.Unmarshal.int_to_protocol ip.Ipv4_packet.proto with
@@ -24,7 +24,7 @@ module Icmp_payload = struct
       | _ -> Error `Untranslated
 
   let dup src =
-    let len = Cstruct.len src in
+    let len = Cstruct.length src in
     let copy = Cstruct.create_unsafe len in
     Cstruct.blit src 0 copy 0 len;
     copy
@@ -152,7 +152,7 @@ module Make(N : Mirage_nat.TABLE) = struct
       let dst = ip.Ipv4_packet.dst in
       P.Table.lookup table (src, dst, transport_channel) >|= function
       | Some (src, dst, new_transport_channel) ->
-        rewrite_ip ~src ~dst ip >>!= fun new_ip_header ->
+        let* new_ip_header = rewrite_ip ~src ~dst ip in
         Ok (P.rewrite ~new_ip_header transport new_transport_channel)
       | None ->
         Log.debug (fun m -> m "No rule matching channel");
@@ -199,7 +199,7 @@ module Make(N : Mirage_nat.TABLE) = struct
       (* but only call `rewrite_ip` on the outer header, since this decrements the TTL,
          and while this is appropriate for the outer IPv4 header,
          we should preserve all non-address fields (including the TTL) in the inner IPv4 header. *)
-       rewrite_ip ~src:new_outer_src ~dst:new_outer_dst outer_ip >>!= fun translated_outer_ip ->
+       let* translated_outer_ip = rewrite_ip ~src:new_outer_src ~dst:new_outer_dst outer_ip in
        let translated_inner_ip = { inner_ip with Ipv4_packet.src = new_inner_src; dst = new_inner_dst } in
        (* also, change the encapsulated transport header's port numbers *)
        let translated_inner_transport_payload =
@@ -208,7 +208,7 @@ module Make(N : Mirage_nat.TABLE) = struct
         * (which might be incorrect due to truncation of the ICMP error message),
         * retrieve this value from the ICMP payload, which is also the inner IP header.
         * This is replicating some non-exposed logic from the tcpip library's Ipv4_packet module. *)
-       let original_inner_ipv4_header_length = 20 + (Cstruct.len inner_ip.options) in
+       let original_inner_ipv4_header_length = 20 + (Cstruct.length inner_ip.options) in
        let original_inner_ipv4_total_length = Ipv4_wire.get_ipv4_len icmp_payload in
        let original_inner_ipv4_payload_length = original_inner_ipv4_total_length - original_inner_ipv4_header_length in
        (* Now we can reassemble the translated inner packet
