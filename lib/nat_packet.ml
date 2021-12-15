@@ -62,11 +62,11 @@ let of_ipv4_packet cache ~now packet : Fragments.Cache.t * (t option, error) res
         Error (fun f -> Fmt.pf f "Ignoring non-TCP/UDP packet: %a" Ipv4_packet.pp ip)
 
 let of_ethernet_frame cache ~now frame =
-  match Ethernet_packet.Unmarshal.of_cstruct frame with
+  match Ethernet.Packet.of_cstruct frame with
   | Error e ->
     cache, Error (fun f -> Fmt.pf f "Failed to parse ethernet frame: %s@.%a" e Cstruct.hexdump_pp frame)
   | Ok (eth, packet) ->
-    match eth.Ethernet_packet.ethertype with
+    match eth.Ethernet.Packet.ethertype with
     | `ARP | `IPv6 ->
       cache, Error (fun f -> Fmt.pf f "Ignoring a non-IPv4 frame: %a" Cstruct.hexdump_pp frame)
     | `IPv4 -> of_ipv4_packet cache ~now packet

@@ -1,4 +1,4 @@
 (test
  (name test_rewrite)
  (modules test_rewrite)
- (libraries mirage-nat tcpip.ipv4 alcotest logs lwt.unix logs.fmt tcpip.unix))
+ (libraries mirage-nat tcpip.ipv4 alcotest logs lwt.unix logs.fmt))
