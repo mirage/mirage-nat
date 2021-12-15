@@ -1,3 +1,6 @@
+## v2.2.5 (2021-12-15)
+- adapt to ethernet 3.0.0 and tcpip 7.0.0 changes (#46 @hannesm)
+
 ## v2.2.4 (2021-10-27)
 - avoid deprecated Cstruct.len, use Cstruct.length (#45 @hannesm)
 - remove rresult dependency (#45 @hannesm)
