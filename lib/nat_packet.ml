@@ -1,14 +1,21 @@
-[@@@ocaml.warning "-39"]
-
 type t =
   [`IPv4 of Ipv4_packet.t * [ `TCP of Tcp.Tcp_packet.t * Cstruct.t
                             | `UDP of Udp_packet.t * Cstruct.t
                             | `ICMP of Icmpv4_packet.t * Cstruct.t
                             ]
   ]
-[@@deriving eq]
 
-[@@@ocaml.warning "+39"]
+let equal a b =
+  match a, b with
+  | `IPv4 (a, a'), `IPv4 (b, b') ->
+    Ipv4_packet.equal a b && match a', b' with
+    | `TCP (a, a'), `TCP (b, b') ->
+      Tcp.Tcp_packet.equal a b && Cstruct.equal a' b'
+    | `UDP (a, a'), `UDP (b, b') ->
+      Udp_packet.equal a b && Cstruct.equal a' b'
+    | `ICMP (a, a'), `ICMP (b, b') ->
+      Icmpv4_packet.equal a b && Cstruct.equal a' b'
+    | _ -> false
 
 type error = Format.formatter -> unit
 
