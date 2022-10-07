@@ -19,6 +19,7 @@ module type S = sig
   type t
   val remove_connections : t -> Ipaddr.V4.t -> ports
   val translate : t -> Nat_packet.t -> (Nat_packet.t, [> `Untranslated | `TTL_exceeded]) result
+  val is_port_free : t -> [ `Udp | `Tcp | `Icmp ] -> src:Ipaddr.V4.t -> dst:Ipaddr.V4.t -> src_port:int -> dst_port:int -> bool
   val add : t -> Nat_packet.t -> Ipaddr.V4.t -> (unit -> int) -> [`NAT | `Redirect of endpoint] -> (unit, [> `Overlap | `Cannot_NAT]) result
   val reset : t -> unit
 end
@@ -45,4 +46,6 @@ module type TABLE = sig
   (** Remove all entries from the table. *)
 
   val remove_connections : t -> Ipaddr.V4.t -> ports
+
+  val is_port_free : t -> [ `Udp | `Tcp | `Icmp ] -> src:Ipaddr.V4.t -> dst:Ipaddr.V4.t -> src_port:int -> dst_port:int -> bool
 end

@@ -22,13 +22,20 @@ module type S = sig
   val remove_connections : t -> Ipaddr.V4.t -> ports
   (** [remove_connections t ip] removes all connections of [ip] in [t]. *)
 
-  val translate : t -> Nat_packet.t -> (Nat_packet.t, [> `Untranslated | `TTL_exceeded]) result
-  (** Given a lookup table and an ip-level packet,
-    * perform any translation indicated by presence in the table.
-    * If the packet should be forwarded, return the translated packet,
-    * else return [Error `Untranslated].
-    * The payload in the result shares the Cstruct with the input, so they should be
-    * treated as read-only. *)
+  val translate : t -> Nat_packet.t ->
+    (Nat_packet.t, [> `Untranslated | `TTL_exceeded]) result
+  (** Given a lookup table and an ip-level packet, perform any translation
+      indicated by presence in the table.
+
+      If the packet should be forwarded, return the translated packet,
+      else return [Error `Untranslated].
+      The payload in the result shares the Cstruct with the input, so they should be
+      treated as read-only. *)
+
+  val is_port_free : t -> [ `Udp | `Tcp | `Icmp ] -> src:Ipaddr.V4.t ->
+    dst:Ipaddr.V4.t -> src_port:int -> dst_port:int -> bool
+  (** [is_port_free t protocol ~src ~dst ~src_port ~dst_port] is true if it is
+      not taken yet. *)
 
   val add : t -> Nat_packet.t -> Ipaddr.V4.t -> (unit -> int) ->
     [`NAT | `Redirect of endpoint] -> (unit, [> `Overlap | `Cannot_NAT]) result
@@ -101,4 +108,9 @@ module type TABLE = sig
 
   val remove_connections : t -> Ipaddr.V4.t -> ports
   (** Remove all connections from and to the given IP address. *)
+
+  val is_port_free : t -> [ `Udp | `Tcp | `Icmp ] -> src:Ipaddr.V4.t ->
+    dst:Ipaddr.V4.t -> src_port:int -> dst_port:int -> bool
+  (** [is_port_free t protocol ~src ~dst ~src_port ~dst_port] is true if it is
+      not taken yet. *)
 end

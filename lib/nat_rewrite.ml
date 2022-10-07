@@ -281,6 +281,9 @@ module Make(N : Mirage_nat.TABLE) = struct
         let inner_transport_header = Cstruct.shift icmp_payload transport_header_start in
         translate_icmp_error table ~outer_ip ~inner_ip ~icmp ~icmp_payload ~inner_transport_header
 
+  let is_port_free table proto ~src ~dst ~src_port ~dst_port =
+    N.is_port_free table proto ~src ~dst ~src_port ~dst_port
+
   let add table packet xl_host port_gen mode =
     let `IPv4 (ip_header, transport) = packet in
     let check_scope ip =
