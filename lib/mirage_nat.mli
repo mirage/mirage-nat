@@ -31,7 +31,7 @@ module type S = sig
     * treated as read-only. *)
 
   val add : t -> Nat_packet.t -> endpoint -> [`NAT | `Redirect of endpoint] -> (unit, [> `Overlap | `Cannot_NAT]) result
-  (** [add t ~now packet xl_endpoint mode] adds an entry to the table to translate packets
+  (** [add t packet xl_endpoint mode] adds an entry to the table to translate packets
       on [packet]'s channel according to [mode], and another entry to translate the
       replies back again.
 
@@ -48,8 +48,6 @@ module type S = sig
 
       In this case, [packet.dst] will typically be an endpoint on the
       NAT itself, to ensure all packets go via the NAT.
-
-      [now] is used to calculate the expiry time for the new entry.
 
       Returns [`Overlap] if the new entries would partially overlap with an existing
       entry.
