@@ -1,15 +1,14 @@
 open Lwt.Infix
 
-module Protocols = Mirage_protocols
-
 module Main
     (* our unikernel is functorized over the physical, ethernet, ARP, and IPv4
        modules for the public and private interfaces, so each one shows up as
        a module argument. *)
     (Public_net: Mirage_net.S) (Private_net: Mirage_net.S)
-    (Public_ethernet : Protocols.ETHERNET) (Private_ethernet : Protocols.ETHERNET)
-    (Public_arpv4 : Protocols.ARP) (Private_arpv4 : Protocols.ARP)
-    (Public_ipv4 : Protocols.IPV4) (Private_ipv4 : Protocols.IPV4)
+    (Public_ethernet : Ethernet.S) (Private_ethernet : Ethernet.S)
+    (Public_arpv4 : Arp.S) (Private_arpv4 : Arp.S)
+    (Public_ipv4 : Tcpip.Ip.S with type ipaddr = Ipaddr.V4.t)
+    (Private_ipv4 : Tcpip.Ip.S with type ipaddr = Ipaddr.V4.t)
     (Random : Mirage_random.S) (Clock : Mirage_clock.MCLOCK)
   = struct
 
@@ -164,7 +163,7 @@ module Main
        and ignore all ipv6 traffic (ipv6 has no need for NAT!). *)
     let listen_public =
       let cache = ref (Fragments.Cache.empty (256 * 1024)) in
-      let header_size = Ethernet_wire.sizeof_ethernet
+      let header_size = Ethernet.Packet.sizeof_ethernet
       and input =
         Public_ethernet.input
           ~arpv4:(Public_arpv4.input public_arpv4)
@@ -181,7 +180,7 @@ module Main
 
     let listen_private =
       let cache = ref (Fragments.Cache.empty (256 * 1024)) in
-      let header_size = Ethernet_wire.sizeof_ethernet
+      let header_size = Ethernet.Packet.sizeof_ethernet
       and input =
         Private_ethernet.input
           ~arpv4:(Private_arpv4.input private_arpv4)
