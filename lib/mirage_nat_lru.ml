@@ -56,8 +56,8 @@ module Storage = struct
       MProf.Trace.label "Mirage_nat_lru.lookup.read";
       let t = L.table t in
       match L.LRU.find key !t with
-      | None -> Lwt.return_none
-      | Some _ as r -> t := L.LRU.promote key !t; Lwt.return r
+      | None -> None
+      | Some _ as r -> t := L.LRU.promote key !t; r
 
     (* cases that should result in a valid mapping:
        neither side is already mapped *)
@@ -65,24 +65,23 @@ module Storage = struct
       MProf.Trace.label "Mirage_nat_lru.insert";
       let t = L.table t in
       match mappings with
-      | [] -> Lwt.return (Ok ())
+      | [] -> Ok ()
       | m :: ms ->
         let known (src, _dst) = L.LRU.mem src !t in
         let first_known = known m in
-        if List.exists (fun x -> known x <> first_known) ms then Lwt.return (Error `Overlap)
+        if List.exists (fun x -> known x <> first_known) ms then Error `Overlap
         else (
           (* TODO: this is not quite right if all mappings already exist, because it's possible that
              the lookups are part of differing pairs -- this situation is pathological, but possible *)
           let t' = List.fold_left (fun t (a, b) -> L.LRU.add a b t) !t mappings in
           t := L.LRU.trim t';
-          Lwt.return_ok ()
+          Ok ()
         )
 
     let delete t mappings =
       let t = L.table t in
       let t' = List.fold_left (fun t m -> L.LRU.remove m t) !t mappings in
-      t := t';
-      Lwt.return_unit
+      t := t'
 
     let pp f t = Fmt.pf f "%d/%d" (L.LRU.size !t) (L.LRU.capacity !t)
   end
@@ -91,12 +90,10 @@ module Storage = struct
   module UDP  = Subtable(struct module LRU = Port_cache let table t = t.udp  type transport_channel = Mirage_nat.port * Mirage_nat.port end)
   module ICMP = Subtable(struct module LRU = Id_cache   let table t = t.icmp type transport_channel = Cstruct.uint16                    end)
 
-  (* TODO remove Lwt.t *)
   let reset t =
     t.tcp := t.defaults.empty_tcp;
     t.udp := t.defaults.empty_udp;
-    t.icmp := t.defaults.empty_icmp;
-    Lwt.return ()
+    t.icmp := t.defaults.empty_icmp
 
   let remove_connections t ip =
     let (=) a b = Ipaddr.V4.compare a b = 0 in
@@ -128,7 +125,7 @@ module Storage = struct
       empty_udp = Port_cache.empty udp_size;
       empty_icmp = Id_cache.empty icmp_size;
     } in
-    Lwt.return {
+    {
       defaults;
       tcp = ref defaults.empty_tcp;
       udp = ref defaults.empty_udp;

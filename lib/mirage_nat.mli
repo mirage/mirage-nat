@@ -22,7 +22,7 @@ module type S = sig
   val remove_connections : t -> Ipaddr.V4.t -> ports
   (** [remove_connections t ip] removes all connections of [ip] in [t]. *)
 
-  val translate : t -> Nat_packet.t -> (Nat_packet.t, [> `Untranslated | `TTL_exceeded]) result Lwt.t
+  val translate : t -> Nat_packet.t -> (Nat_packet.t, [> `Untranslated | `TTL_exceeded]) result
   (** Given a lookup table and an ip-level packet,
     * perform any translation indicated by presence in the table.
     * If the packet should be forwarded, return the translated packet,
@@ -30,7 +30,7 @@ module type S = sig
     * The payload in the result shares the Cstruct with the input, so they should be
     * treated as read-only. *)
 
-  val add : t -> Nat_packet.t -> endpoint -> [`NAT | `Redirect of endpoint] -> (unit, [> `Overlap | `Cannot_NAT]) result Lwt.t
+  val add : t -> Nat_packet.t -> endpoint -> [`NAT | `Redirect of endpoint] -> (unit, [> `Overlap | `Cannot_NAT]) result
   (** [add t ~now packet xl_endpoint mode] adds an entry to the table to translate packets
       on [packet]'s channel according to [mode], and another entry to translate the
       replies back again.
@@ -58,7 +58,7 @@ module type S = sig
       or is an ICMP packet which is not a query.
   *)
 
-  val reset : t -> unit Lwt.t
+  val reset : t -> unit
   (** Remove all entries from the table. *)
 end
 
@@ -68,19 +68,19 @@ module type SUBTABLE = sig
   type transport_channel
   type channel = Ipaddr.V4.t * Ipaddr.V4.t * transport_channel
 
-  val lookup : t -> channel -> channel option Lwt.t
+  val lookup : t -> channel -> channel option
   (** [lookup t channel] is [Some (expiry, translated_channel)] - the new endpoints
       that should be applied to a packet using [channel] - or [None] if no entry for [channel] exists.
       [expiry] is an absolute time-stamp. *)
 
-  val insert : t -> (channel * channel) list -> (unit, [> `Overlap]) result Lwt.t
+  val insert : t -> (channel * channel) list -> (unit, [> `Overlap]) result
   (** [insert t ~expiry translations] adds the given translations to the table.
       Each translation is a pair [input, target] - packets with channel [input] should be
       rewritten to have channel [output].
       It returns an error if the new entries would overlap with existing entries.
       [expiry] is the absolute time-stamp of the desired expiry time. *)
 
-  val delete : t -> channel list -> unit Lwt.t
+  val delete : t -> channel list -> unit
   (** [delete t sources] removes the entries mapping [sources], if they exist. *)
 end
 
@@ -96,7 +96,7 @@ module type TABLE = sig
   module ICMP : SUBTABLE with type t := t and type transport_channel = Cstruct.uint16
   (** An ICMP query is identified by the ICMP ID. *)
 
-  val reset : t -> unit Lwt.t
+  val reset : t -> unit
   (** Remove all entries from the table. *)
 
   val remove_connections : t -> Ipaddr.V4.t -> ports

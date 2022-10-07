@@ -24,7 +24,6 @@ depends: [
   "alcotest" {with-test}
   "mirage-clock-unix" {with-test}
   "fmt" {with-test & >= "0.8.7"}
-  "lwt" {with-test}
   "logs" {with-test}
 ]
 conflicts: [ "result" {< "1.5"} ]

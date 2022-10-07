@@ -114,7 +114,7 @@ module Main
     *)
     let rec ingest_private table packet =
       Log.debug (fun f -> f "Private interface got a packet: %a" Nat_packet.pp packet);
-      Nat.translate table packet >>= function
+      match Nat.translate table packet with
       | Ok packet -> output_public packet
       | Error `TTL_exceeded ->
         (* TODO: if we were really keen, we'd send them an ICMP message back. *)
@@ -130,7 +130,7 @@ module Main
       (* TODO: this may generate low-numbered source ports, which may be treated
          with suspicion by other nodes on the network *)
       let port = Cstruct.BE.get_uint16 (Random.generate 2) 0 in
-      Nat.add table packet (public_ip, port) `NAT >>= function
+      match Nat.add table packet (public_ip, port) `NAT with
       | Error e ->
         Log.debug (fun f -> f "Failed to add a NAT rule: %a" Mirage_nat.pp_error e);
         Lwt.return_unit
@@ -142,7 +142,7 @@ module Main
        interface if a rule already exists.
        we shouldn't make new rules from public traffic. *)
     let ingest_public table packet =
-      Nat.translate table packet >>= function
+      match Nat.translate table packet with
       | Ok packet -> output_private packet
       | Error `TTL_exceeded ->
         Log.debug (fun f -> f "TTL exceeded for a packet on the public interface");
@@ -154,7 +154,7 @@ module Main
     in
 
     (* get an empty NAT table *)
-    Nat.empty ~tcp_size:1024 ~udp_size:1024 ~icmp_size:20 >>= fun table ->
+    let table = Nat.empty ~tcp_size:1024 ~udp_size:1024 ~icmp_size:20 in
 
     (* we need to establish listeners for the private and public interfaces *)
     (* we're interested in all traffic to the physical interface; we'd like to
