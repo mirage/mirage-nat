@@ -30,10 +30,12 @@ module type S = sig
     * The payload in the result shares the Cstruct with the input, so they should be
     * treated as read-only. *)
 
-  val add : t -> Nat_packet.t -> endpoint -> [`NAT | `Redirect of endpoint] -> (unit, [> `Overlap | `Cannot_NAT]) result
-  (** [add t packet xl_endpoint mode] adds an entry to the table to translate packets
-      on [packet]'s channel according to [mode], and another entry to translate the
-      replies back again.
+  val add : t -> Nat_packet.t -> Ipaddr.V4.t -> (unit -> int) ->
+    [`NAT | `Redirect of endpoint] -> (unit, [> `Overlap | `Cannot_NAT]) result
+  (** [add t packet xl_host port_generator mode] adds an entry to the table to
+      translate packets on [packet]'s channel according to [mode], and another
+      entry to translate the replies back again. The [port_generator] may be
+      called multiple times (at most 100 times) to find a free port.
 
       If [mode] is [`NAT] then the entries will be of the form:
 

@@ -281,7 +281,7 @@ module Make(N : Mirage_nat.TABLE) = struct
         let inner_transport_header = Cstruct.shift icmp_payload transport_header_start in
         translate_icmp_error table ~outer_ip ~inner_ip ~icmp ~icmp_payload ~inner_transport_header
 
-  let add table packet (xl_host, xl_port) mode =
+  let add table packet xl_host port_gen mode =
     let `IPv4 (ip_header, transport) = packet in
     let check_scope ip =
       match Ipaddr.scope (V4 ip) with
@@ -296,22 +296,34 @@ module Make(N : Mirage_nat.TABLE) = struct
         match P.channel t with
         | None -> Error `Cannot_NAT
         | Some transport_channel ->
-          let add_mapping (final_dst, translated_transport) =
-            let request_mapping = (src, dst, transport_channel), (xl_host, final_dst, translated_transport) in
-            let response_mapping = (final_dst, xl_host, P.flip translated_transport), (dst, src, P.flip transport_channel) in
-            P.Table.insert table [request_mapping; response_mapping]
+          let rec try_add_mapping retries =
+            let xl_port = port_gen () in
+            let opt_again = function
+              | Error `Overlap as e ->
+                if retries > 0 then try_add_mapping (retries - 1) else e
+              | Ok () -> Ok ()
+            in
+            let add_mapping (final_dst, translated_transport) =
+              let request_mapping = (src, dst, transport_channel), (xl_host, final_dst, translated_transport) in
+              let response_mapping = (final_dst, xl_host, P.flip translated_transport), (dst, src, P.flip transport_channel) in
+              P.Table.insert table [request_mapping; response_mapping]
+            in
+            match mode with
+            | `NAT ->
+              opt_again (add_mapping (dst, P.nat_rule transport_channel xl_port))
+            | `Redirect (final_dst, final_endpoint) ->
+              match P.redirect_rule transport_channel ~final_endpoint xl_port with
+              | Ok translated_request_transport ->
+                opt_again (add_mapping (final_dst, translated_request_transport))
+              | Error _ as e -> e
           in
-          match mode with
-          | `NAT -> add_mapping (dst, P.nat_rule transport_channel xl_port)
-          | `Redirect (final_dst, final_endpoint) ->
-            match P.redirect_rule transport_channel ~final_endpoint xl_port with
-            | Ok translated_request_transport -> add_mapping (final_dst, translated_request_transport)
-            | Error _ as e -> e
+          try_add_mapping 100
       in
       match transport with
       | `TCP _ as transport  -> add2 (module TCP) transport
       | `UDP _ as transport  -> add2 (module UDP) transport
-      | `ICMP (icmp, _) as transport when Nat_packet.icmp_type icmp = `Query -> add2 (module ICMP) transport
+      | `ICMP (icmp, _) as transport when Nat_packet.icmp_type icmp = `Query ->
+        add2 (module ICMP) transport
       | `ICMP _ -> Error `Cannot_NAT
 
 end
