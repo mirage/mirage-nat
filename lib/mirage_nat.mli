@@ -37,7 +37,7 @@ module type S = sig
   (** [is_port_free t protocol ~src ~dst ~src_port ~dst_port] is true if it is
       not taken yet. *)
 
-  val add : t -> Nat_packet.t -> Ipaddr.V4.t -> (unit -> int) ->
+  val add : t -> Nat_packet.t -> Ipaddr.V4.t -> (unit -> int option) ->
     [`NAT | `Redirect of endpoint] -> (unit, [> `Overlap | `Cannot_NAT]) result
   (** [add t packet xl_host port_generator mode] adds an entry to the table to
       translate packets on [packet]'s channel according to [mode], and another

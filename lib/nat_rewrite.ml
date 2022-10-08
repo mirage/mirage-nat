@@ -296,31 +296,36 @@ module Make(N : Mirage_nat.TABLE) = struct
     | false, _ | _, false -> Error `Cannot_NAT
     | true, true ->
       let add2 (type t) (module P : PROTOCOL with type transport = t) (t:t) =
-        match P.channel t with
-        | None -> Error `Cannot_NAT
-        | Some transport_channel ->
-          let rec try_add_mapping retries =
-            let xl_port = port_gen () in
-            let opt_again = function
-              | Error `Overlap as e ->
-                if retries > 0 then try_add_mapping (retries - 1) else e
-              | Ok () -> Ok ()
-            in
-            let add_mapping (final_dst, translated_transport) =
-              let request_mapping = (src, dst, transport_channel), (xl_host, final_dst, translated_transport) in
-              let response_mapping = (final_dst, xl_host, P.flip translated_transport), (dst, src, P.flip transport_channel) in
-              P.Table.insert table [request_mapping; response_mapping]
-            in
-            match mode with
-            | `NAT ->
-              opt_again (add_mapping (dst, P.nat_rule transport_channel xl_port))
-            | `Redirect (final_dst, final_endpoint) ->
-              match P.redirect_rule transport_channel ~final_endpoint xl_port with
-              | Ok translated_request_transport ->
-                opt_again (add_mapping (final_dst, translated_request_transport))
-              | Error _ as e -> e
+        let* transport_channel =
+          Option.to_result ~none:`Cannot_NAT (P.channel t)
+        in
+        let rec try_add_mapping retries =
+          let* xl_port = Option.to_result ~none:`Overlap (port_gen ()) in
+          let opt_again = function
+            | Error `Overlap as e ->
+              if retries > 0 then try_add_mapping (retries - 1) else e
+            | Ok () -> Ok ()
           in
-          try_add_mapping 100
+          let add_mapping (final_dst, translated_transport) =
+            let request_mapping =
+              (src, dst, transport_channel),
+              (xl_host, final_dst, translated_transport)
+            and response_mapping =
+              (final_dst, xl_host, P.flip translated_transport),
+              (dst, src, P.flip transport_channel)
+            in
+            P.Table.insert table [request_mapping; response_mapping]
+          in
+          match mode with
+          | `NAT ->
+            opt_again (add_mapping (dst, P.nat_rule transport_channel xl_port))
+          | `Redirect (final_dst, final_endpoint) ->
+            let* translated_request_transport =
+              P.redirect_rule transport_channel ~final_endpoint xl_port
+            in
+            opt_again (add_mapping (final_dst, translated_request_transport))
+        in
+        try_add_mapping 100
       in
       match transport with
       | `TCP _ as transport  -> add2 (module TCP) transport
