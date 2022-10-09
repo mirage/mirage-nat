@@ -3,8 +3,6 @@ open Ipaddr
 let src = Logs.Src.create "nat-rewrite" ~doc:"Mirage NAT packet rewriter"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-open Lwt.Infix
-
 let ( let* ) = Result.bind
 
 let rewrite_ip ~src ~dst ip =
@@ -146,11 +144,11 @@ module Make(N : Mirage_nat.TABLE) = struct
     match P.channel transport with
     | None ->
       Log.debug (fun m -> m "No transport channel");
-      Lwt.return (Error `Untranslated)
+      Error `Untranslated
     | Some transport_channel ->
       let src = ip.Ipv4_packet.src in
       let dst = ip.Ipv4_packet.dst in
-      P.Table.lookup table (src, dst, transport_channel) >|= function
+      match P.Table.lookup table (src, dst, transport_channel) with
       | Some (src, dst, new_transport_channel) ->
         let* new_ip_header = rewrite_ip ~src ~dst ip in
         Ok (P.rewrite ~new_ip_header transport new_transport_channel)
@@ -232,12 +230,12 @@ module Make(N : Mirage_nat.TABLE) = struct
        information from the inner transport header.  In the TCP/UDP case, these ports then also
        need to be looked up in reverse order. *)
     match Icmp_payload.get_encapsulated_packet_channel inner_ip inner_transport_header with
-    | Error _ as e -> Lwt.return e
+    | Error _ as e -> e
     | Ok (`ICMP id) -> begin
       (* in this case, we still (hopefully) have a channel in the inner layer on which to match,
          it's just not port-based *)
       let channel = inner_ip.Ipv4_packet.dst, inner_ip.Ipv4_packet.src, id in
-      N.ICMP.lookup table channel >|= function
+      match N.ICMP.lookup table channel with
       | None ->
         Log.debug (fun f -> f "ICMP error message encapsulating ICMP query with id %d has no matching entry \
                                in the ICMP NAT table; cannot translate this packet" id);
@@ -250,7 +248,7 @@ module Make(N : Mirage_nat.TABLE) = struct
          must be reversed in the lookup call in order to get the correct translation. *)
     | Ok (`TCP (src_port, dst_port)) -> begin
       let channel = inner_ip.Ipv4_packet.dst, inner_ip.Ipv4_packet.src, (dst_port, src_port) in
-      N.TCP.lookup table channel >|= function
+      match N.TCP.lookup table channel with
       | Some (new_src, new_dst, (new_sport, new_dport)) ->
         rewrite_packet ~new_outer_src:outer_ip.Ipv4_packet.src ~new_outer_dst:new_dst
           ~new_inner_src:new_dst ~new_inner_dst:new_src
@@ -259,7 +257,7 @@ module Make(N : Mirage_nat.TABLE) = struct
     end
     | Ok (`UDP (src_port, dst_port)) ->
        let channel = inner_ip.Ipv4_packet.dst, inner_ip.Ipv4_packet.src, (dst_port, src_port) in
-       N.UDP.lookup table channel >|= function
+       match N.UDP.lookup table channel with
        | Some (new_src, new_dst, (new_sport, new_dport)) ->
         rewrite_packet ~new_outer_src:outer_ip.Ipv4_packet.src ~new_outer_dst:new_dst
           ~new_inner_src:new_dst ~new_inner_dst:new_src
@@ -278,12 +276,15 @@ module Make(N : Mirage_nat.TABLE) = struct
       match Ipv4_packet.Unmarshal.header_of_cstruct icmp_payload with
       | Error _ ->
         Log.debug (fun m -> m "Failed to read encapsulated IPv4 packet in ICMP payload: does not parse");
-        Lwt.return @@ Error `Untranslated
+        Error `Untranslated
       | Ok (inner_ip, transport_header_start) ->
         let inner_transport_header = Cstruct.shift icmp_payload transport_header_start in
         translate_icmp_error table ~outer_ip ~inner_ip ~icmp ~icmp_payload ~inner_transport_header
 
-  let add table packet (xl_host, xl_port) mode =
+  let is_port_free table proto ~src ~dst ~src_port ~dst_port =
+    N.is_port_free table proto ~src ~dst ~src_port ~dst_port
+
+  let add table packet xl_host port_gen mode =
     let `IPv4 (ip_header, transport) = packet in
     let check_scope ip =
       match Ipaddr.scope (V4 ip) with
@@ -292,28 +293,45 @@ module Make(N : Mirage_nat.TABLE) = struct
     in
     let (src, dst) = Ipv4_packet.(ip_header.src, ip_header.dst) in
     match check_scope src, check_scope dst with
-    | false, _ | _, false -> Lwt.return (Error `Cannot_NAT)
+    | false, _ | _, false -> Error `Cannot_NAT
     | true, true ->
       let add2 (type t) (module P : PROTOCOL with type transport = t) (t:t) =
-        match P.channel t with
-        | None -> Lwt.return (Error `Cannot_NAT)
-        | Some transport_channel ->
+        let* transport_channel =
+          Option.to_result ~none:`Cannot_NAT (P.channel t)
+        in
+        let rec try_add_mapping retries =
+          let* xl_port = Option.to_result ~none:`Overlap (port_gen ()) in
+          let opt_again = function
+            | Error `Overlap as e ->
+              if retries > 0 then try_add_mapping (retries - 1) else e
+            | Ok () -> Ok ()
+          in
           let add_mapping (final_dst, translated_transport) =
-            let request_mapping = (src, dst, transport_channel), (xl_host, final_dst, translated_transport) in
-            let response_mapping = (final_dst, xl_host, P.flip translated_transport), (dst, src, P.flip transport_channel) in
+            let request_mapping =
+              (src, dst, transport_channel),
+              (xl_host, final_dst, translated_transport)
+            and response_mapping =
+              (final_dst, xl_host, P.flip translated_transport),
+              (dst, src, P.flip transport_channel)
+            in
             P.Table.insert table [request_mapping; response_mapping]
           in
           match mode with
-          | `NAT -> add_mapping (dst, P.nat_rule transport_channel xl_port)
+          | `NAT ->
+            opt_again (add_mapping (dst, P.nat_rule transport_channel xl_port))
           | `Redirect (final_dst, final_endpoint) ->
-            match P.redirect_rule transport_channel ~final_endpoint xl_port with
-            | Ok translated_request_transport -> add_mapping (final_dst, translated_request_transport)
-            | Error _ as e -> Lwt.return e
+            let* translated_request_transport =
+              P.redirect_rule transport_channel ~final_endpoint xl_port
+            in
+            opt_again (add_mapping (final_dst, translated_request_transport))
+        in
+        try_add_mapping 100
       in
       match transport with
       | `TCP _ as transport  -> add2 (module TCP) transport
       | `UDP _ as transport  -> add2 (module UDP) transport
-      | `ICMP (icmp, _) as transport when Nat_packet.icmp_type icmp = `Query -> add2 (module ICMP) transport
-      | `ICMP _ -> Lwt.return (Error `Cannot_NAT)
+      | `ICMP (icmp, _) as transport when Nat_packet.icmp_type icmp = `Query ->
+        add2 (module ICMP) transport
+      | `ICMP _ -> Error `Cannot_NAT
 
 end

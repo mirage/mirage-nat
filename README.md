@@ -49,10 +49,6 @@ sudo xl create simple_nat.xl -c
 
 To see more console output, try increasing the log level with the `-l` argument to `mirage configure`.
 
-## Caveats
-
-Please note that only one network interface is supported via solo5 at this time, so trying to run the example with the `-t ukvm` or `-t virtio` targets is likely to be unsatisfying.  The example needs two network interfaces, each on a different network, to do anything interesting.
-
 # Users
 
 [qubes-mirage-firewall](https://github.com/talex5/qubes-mirage-firewall), the unikernel firewall for [QubesOS](https://qubes-os.org), uses mirage-nat to provide network address translation for guest domains.

@@ -1,15 +1,14 @@
 open Lwt.Infix
 
-module Protocols = Mirage_protocols
-
 module Main
     (* our unikernel is functorized over the physical, ethernet, ARP, and IPv4
        modules for the public and private interfaces, so each one shows up as
        a module argument. *)
     (Public_net: Mirage_net.S) (Private_net: Mirage_net.S)
-    (Public_ethernet : Protocols.ETHERNET) (Private_ethernet : Protocols.ETHERNET)
-    (Public_arpv4 : Protocols.ARP) (Private_arpv4 : Protocols.ARP)
-    (Public_ipv4 : Protocols.IPV4) (Private_ipv4 : Protocols.IPV4)
+    (Public_ethernet : Ethernet.S) (Private_ethernet : Ethernet.S)
+    (Public_arpv4 : Arp.S) (Private_arpv4 : Arp.S)
+    (Public_ipv4 : Tcpip.Ip.S with type ipaddr = Ipaddr.V4.t)
+    (Private_ipv4 : Tcpip.Ip.S with type ipaddr = Ipaddr.V4.t)
     (Random : Mirage_random.S) (Clock : Mirage_clock.MCLOCK)
   = struct
 
@@ -115,7 +114,7 @@ module Main
     *)
     let rec ingest_private table packet =
       Log.debug (fun f -> f "Private interface got a packet: %a" Nat_packet.pp packet);
-      Nat.translate table packet >>= function
+      match Nat.translate table packet with
       | Ok packet -> output_public packet
       | Error `TTL_exceeded ->
         (* TODO: if we were really keen, we'd send them an ICMP message back. *)
@@ -131,7 +130,7 @@ module Main
       (* TODO: this may generate low-numbered source ports, which may be treated
          with suspicion by other nodes on the network *)
       let port = Cstruct.BE.get_uint16 (Random.generate 2) 0 in
-      Nat.add table packet (public_ip, port) `NAT >>= function
+      match Nat.add table packet public_ip (fun () -> port) `NAT with
       | Error e ->
         Log.debug (fun f -> f "Failed to add a NAT rule: %a" Mirage_nat.pp_error e);
         Lwt.return_unit
@@ -143,7 +142,7 @@ module Main
        interface if a rule already exists.
        we shouldn't make new rules from public traffic. *)
     let ingest_public table packet =
-      Nat.translate table packet >>= function
+      match Nat.translate table packet with
       | Ok packet -> output_private packet
       | Error `TTL_exceeded ->
         Log.debug (fun f -> f "TTL exceeded for a packet on the public interface");
@@ -155,7 +154,7 @@ module Main
     in
 
     (* get an empty NAT table *)
-    Nat.empty ~tcp_size:1024 ~udp_size:1024 ~icmp_size:20 >>= fun table ->
+    let table = Nat.empty ~tcp_size:1024 ~udp_size:1024 ~icmp_size:20 in
 
     (* we need to establish listeners for the private and public interfaces *)
     (* we're interested in all traffic to the physical interface; we'd like to
@@ -164,7 +163,7 @@ module Main
        and ignore all ipv6 traffic (ipv6 has no need for NAT!). *)
     let listen_public =
       let cache = ref (Fragments.Cache.empty (256 * 1024)) in
-      let header_size = Ethernet_wire.sizeof_ethernet
+      let header_size = Ethernet.Packet.sizeof_ethernet
       and input =
         Public_ethernet.input
           ~arpv4:(Public_arpv4.input public_arpv4)
@@ -181,7 +180,7 @@ module Main
 
     let listen_private =
       let cache = ref (Fragments.Cache.empty (256 * 1024)) in
-      let header_size = Ethernet_wire.sizeof_ethernet
+      let header_size = Ethernet.Packet.sizeof_ethernet
       and input =
         Private_ethernet.input
           ~arpv4:(Private_arpv4.input private_arpv4)

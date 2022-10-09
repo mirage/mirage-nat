@@ -37,16 +37,17 @@ module Storage = struct
 
   type t = {
     defaults : defaults;
-    tcp: Port_cache.t ref;
-    udp: Port_cache.t ref;
-    icmp: Id_cache.t ref;
+    mutable tcp: Port_cache.t;
+    mutable udp: Port_cache.t;
+    mutable icmp: Id_cache.t;
   }
 
   module Subtable
       (L : sig
          type transport_channel
          module LRU : Lru.F.S with type v = transport_channel channel
-         val table : t -> LRU.t ref
+         val table : t -> LRU.t
+         val update_table : t -> LRU.t -> unit
        end)
   = struct
     type transport_channel = L.transport_channel
@@ -54,49 +55,60 @@ module Storage = struct
 
     let lookup t key =
       MProf.Trace.label "Mirage_nat_lru.lookup.read";
-      let t = L.table t in
-      match L.LRU.find key !t with
-      | None -> Lwt.return_none
-      | Some _ as r -> t := L.LRU.promote key !t; Lwt.return r
+      let table = L.table t in
+      match L.LRU.find key table with
+      | None -> None
+      | Some _ as r -> L.update_table t (L.LRU.promote key table); r
 
     (* cases that should result in a valid mapping:
        neither side is already mapped *)
     let insert t mappings =
       MProf.Trace.label "Mirage_nat_lru.insert";
-      let t = L.table t in
+      let table = L.table t in
       match mappings with
-      | [] -> Lwt.return (Ok ())
+      | [] -> Ok ()
       | m :: ms ->
-        let known (src, _dst) = L.LRU.mem src !t in
+        let known (src, _dst) = L.LRU.mem src table in
         let first_known = known m in
-        if List.exists (fun x -> known x <> first_known) ms then Lwt.return (Error `Overlap)
+        if List.exists (fun x -> known x <> first_known) ms then Error `Overlap
         else (
           (* TODO: this is not quite right if all mappings already exist, because it's possible that
              the lookups are part of differing pairs -- this situation is pathological, but possible *)
-          let t' = List.fold_left (fun t (a, b) -> L.LRU.add a b t) !t mappings in
-          t := L.LRU.trim t';
-          Lwt.return_ok ()
+          let table' =
+            List.fold_left (fun t (a, b) -> L.LRU.add a b t) table mappings
+          in
+          L.update_table t (L.LRU.trim table');
+          Ok ()
         )
 
     let delete t mappings =
-      let t = L.table t in
-      let t' = List.fold_left (fun t m -> L.LRU.remove m t) !t mappings in
-      t := t';
-      Lwt.return_unit
+      let table = L.table t in
+      let table' = List.fold_left (fun t m -> L.LRU.remove m t) table mappings in
+      L.update_table t table'
 
-    let pp f t = Fmt.pf f "%d/%d" (L.LRU.size !t) (L.LRU.capacity !t)
+    let pp f t = Fmt.pf f "%d/%d" (L.LRU.size t) (L.LRU.capacity t)
   end
 
-  module TCP  = Subtable(struct module LRU = Port_cache let table t = t.tcp  type transport_channel = Mirage_nat.port * Mirage_nat.port end)
-  module UDP  = Subtable(struct module LRU = Port_cache let table t = t.udp  type transport_channel = Mirage_nat.port * Mirage_nat.port end)
-  module ICMP = Subtable(struct module LRU = Id_cache   let table t = t.icmp type transport_channel = Cstruct.uint16                    end)
+  module TCP  = Subtable(struct module LRU = Port_cache
+      let table t = t.tcp
+      let update_table t tcp = t.tcp <- tcp
+      type transport_channel = Mirage_nat.port * Mirage_nat.port
+    end)
+  module UDP  = Subtable(struct module LRU = Port_cache
+      let table t = t.udp
+      let update_table t udp = t.udp <- udp
+      type transport_channel = Mirage_nat.port * Mirage_nat.port
+    end)
+  module ICMP = Subtable(struct module LRU = Id_cache
+      let table t = t.icmp
+      let update_table t icmp = t.icmp <- icmp
+      type transport_channel = Cstruct.uint16
+    end)
 
-  (* TODO remove Lwt.t *)
   let reset t =
-    t.tcp := t.defaults.empty_tcp;
-    t.udp := t.defaults.empty_udp;
-    t.icmp := t.defaults.empty_icmp;
-    Lwt.return ()
+    t.tcp <- t.defaults.empty_tcp;
+    t.udp <- t.defaults.empty_udp;
+    t.icmp <- t.defaults.empty_icmp
 
   let remove_connections t ip =
     let (=) a b = Ipaddr.V4.compare a b = 0 in
@@ -114,12 +126,12 @@ module Storage = struct
         in
         remove pop_lru add f t_old t freed_ports
     in
-    let tcp, freed_tcp_ports = remove Port_cache.pop_lru Port_cache.add fst !(t.tcp) t.defaults.empty_tcp [] in
-    t.tcp := tcp;
-    let udp, freed_udp_ports = remove Port_cache.pop_lru Port_cache.add fst !(t.udp) t.defaults.empty_udp [] in
-    t.udp := udp;
-    let icmp, freed_icmp_ports = remove Id_cache.pop_lru Id_cache.add (fun x -> x) !(t.icmp) t.defaults.empty_icmp [] in
-    t.icmp := icmp;
+    let tcp, freed_tcp_ports = remove Port_cache.pop_lru Port_cache.add fst (t.tcp) t.defaults.empty_tcp [] in
+    t.tcp <- tcp;
+    let udp, freed_udp_ports = remove Port_cache.pop_lru Port_cache.add fst (t.udp) t.defaults.empty_udp [] in
+    t.udp <- udp;
+    let icmp, freed_icmp_ports = remove Id_cache.pop_lru Id_cache.add (fun x -> x) (t.icmp) t.defaults.empty_icmp [] in
+    t.icmp <- icmp;
     Mirage_nat.{ tcp = freed_tcp_ports ; udp = freed_udp_ports ; icmp = freed_icmp_ports }
 
   let empty ~tcp_size ~udp_size ~icmp_size =
@@ -128,11 +140,11 @@ module Storage = struct
       empty_udp = Port_cache.empty udp_size;
       empty_icmp = Id_cache.empty icmp_size;
     } in
-    Lwt.return {
+    {
       defaults;
-      tcp = ref defaults.empty_tcp;
-      udp = ref defaults.empty_udp;
-      icmp = ref defaults.empty_icmp;
+      tcp = defaults.empty_tcp;
+      udp = defaults.empty_udp;
+      icmp = defaults.empty_icmp;
     }
 
   let pp_summary f t =
@@ -140,6 +152,12 @@ module Storage = struct
       TCP.pp t.tcp
       UDP.pp t.udp
       ICMP.pp t.icmp
+
+  let is_port_free t protocol ~src ~dst ~src_port ~dst_port =
+    match protocol with
+    | `Tcp -> Port_cache.mem (src, dst, (src_port, dst_port)) t.tcp
+    | `Udp -> Port_cache.mem (src, dst, (src_port, dst_port)) t.udp
+    | `Icmp -> Id_cache.mem (src, dst, src_port) t.icmp
 
 end
 
