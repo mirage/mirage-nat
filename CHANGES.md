@@ -1,3 +1,10 @@
+## v3.0.0 (2022-10-09)
+- remove Lwt.t monad, lwt dependency (#47 @hannesm)
+- remove ppx_deriving dependency (#47 @hannesm)
+- revise mutable state: use "mutable foo : x" instead of "foo : x ref" (#47 @hannesm)
+- add Mirage_nat.is_port_free (#47 @hannesm)
+- revise Mirage_nat.add to take a port_generator (unit -> int option) (#47 @hannesm)
+
 ## v2.2.5 (2021-12-15)
 - adapt to ethernet 3.0.0 and tcpip 7.0.0 changes (#46 @hannesm)
 
