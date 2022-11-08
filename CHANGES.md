@@ -1,3 +1,6 @@
+## v3.0.1 (2022-11-08)
+- fix Mirage_nat.is_port_free and add a test (#48 @hannesm)
+
 ## v3.0.0 (2022-10-09)
 - remove Lwt.t monad, lwt dependency (#47 @hannesm)
 - remove ppx_deriving dependency (#47 @hannesm)
