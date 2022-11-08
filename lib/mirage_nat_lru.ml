@@ -154,10 +154,11 @@ module Storage = struct
       ICMP.pp t.icmp
 
   let is_port_free t protocol ~src ~dst ~src_port ~dst_port =
-    match protocol with
-    | `Tcp -> Port_cache.mem (src, dst, (src_port, dst_port)) t.tcp
-    | `Udp -> Port_cache.mem (src, dst, (src_port, dst_port)) t.udp
-    | `Icmp -> Id_cache.mem (src, dst, src_port) t.icmp
+    not
+      (match protocol with
+       | `Tcp -> Port_cache.mem (src, dst, (src_port, dst_port)) t.tcp
+       | `Udp -> Port_cache.mem (src, dst, (src_port, dst_port)) t.udp
+       | `Icmp -> Id_cache.mem (src, dst, src_port) t.icmp)
 
 end
 
