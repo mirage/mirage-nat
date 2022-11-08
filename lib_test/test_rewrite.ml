@@ -555,6 +555,50 @@ let test_of_ipv4_packet_reassembly_basic () =
     end
   | _ -> Alcotest.fail "to_cstruct failed"
 
+let test_free_port () =
+  let t = Rewriter.empty ~tcp_size:10 ~udp_size:10 ~icmp_size:10 in
+  let proto = `UDP in
+  let internal_client = ipv4_of_str "172.16.2.30" in
+  let outside_requester = ipv4_of_str "1.2.3.4" in
+  let nat_external_ip = ipv4_of_str "208.121.103.4" in
+  let nat_internal_ip = ipv4_of_str "172.16.2.1" in
+  let internal_client_port, outside_requester_port,
+      nat_external_port, nat_internal_port = 18787, 80, 80, 8989 in
+  Alcotest.(check bool "the port is free" true
+              (Rewriter.is_port_free t `Udp
+                 ~src:outside_requester
+                 ~dst:nat_external_ip
+                 ~src_port:outside_requester_port
+                 ~dst_port:nat_external_port));
+  let packet =
+    Constructors.full_packet ~proto ~ttl:52
+      ~src:outside_requester
+      ~src_port:outside_requester_port
+      ~payload:Default_values.payload
+      ~dst:nat_external_ip
+      ~dst_port:nat_external_port
+  in
+  match
+    Rewriter.add t packet
+      nat_internal_ip (fun () -> Some nat_internal_port)
+      (`Redirect (internal_client, internal_client_port))
+    with
+    | Error e -> Alcotest.fail (Fmt.str "Failed to insert test data into table structure: %a" Mirage_nat.pp_error e)
+    | Ok () ->
+      Alcotest.(check bool "the port is not free" false
+                  (Rewriter.is_port_free t `Udp
+                     ~src:outside_requester
+                     ~dst:nat_external_ip
+                     ~src_port:outside_requester_port
+                     ~dst_port:nat_external_port));
+      Alcotest.(check bool "the port is free (udp is not free)" true
+                  (Rewriter.is_port_free t `Tcp
+                     ~src:outside_requester
+                     ~dst:nat_external_ip
+                     ~src_port:outside_requester_port
+                     ~dst_port:nat_external_port))
+
+
 let correct_mappings = [
   "IPv4 UDP NAT rewrites", `Quick, test_nat_ipv4 `UDP ;
   "IPv4 TCP NAT rewrites", `Quick, test_nat_ipv4 `TCP ;
@@ -593,6 +637,10 @@ let fragmentation = [
   "of_ipv4_packet reassembles", `Quick, test_of_ipv4_packet_reassembly_basic ;
 ]
 
+let free_port = [
+  "there is a free port", `Quick, test_free_port ;
+]
+
 let () =
   Logs.set_reporter (Logs_fmt.reporter ());
   Logs.set_level ~all:true (Some Logs.Debug);
@@ -602,4 +650,5 @@ let () =
     "add_redirect", add_redirect;
     "many_entries", many_entries;
     "fragmentation", fragmentation;
+    "free port", free_port;
   ]
