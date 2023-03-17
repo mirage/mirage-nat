@@ -16,9 +16,9 @@ module Icmp_payload = struct
       Log.debug (fun m -> m "Payload too short to analyze");
       Error `Untranslated)
     else match Ipv4_packet.Unmarshal.int_to_protocol ip.Ipv4_packet.proto with
-      | Some `UDP -> Ok (`UDP (Udp_wire.get_udp_source_port payload, Udp_wire.get_udp_dest_port payload))
-      | Some `TCP -> Ok (`TCP (Tcp.Tcp_wire.get_tcp_src_port payload, Tcp.Tcp_wire.get_tcp_dst_port payload))
-      | Some `ICMP -> Ok (`ICMP (Icmpv4_wire.get_icmpv4_id payload))
+      | Some `UDP -> Ok (`UDP (Udp_wire.get_src_port payload, Udp_wire.get_dst_port payload))
+      | Some `TCP -> Ok (`TCP (Tcp.Tcp_wire.get_src_port payload, Tcp.Tcp_wire.get_dst_port payload))
+      | Some `ICMP -> Ok (`ICMP (Cstruct.BE.get_uint16 payload 4)) (* ID in echo request/reply *)
       | _ -> Error `Untranslated
 
   let dup src =
@@ -31,19 +31,19 @@ module Icmp_payload = struct
     let payload = dup payload in
     begin match channel with
       | `UDP (sport, dport) ->
-        Udp_wire.set_udp_source_port payload sport;
-        Udp_wire.set_udp_dest_port payload dport
+        Udp_wire.set_src_port payload sport;
+        Udp_wire.set_dst_port payload dport
       | `TCP (sport, dport) ->
-        Tcp.Tcp_wire.set_tcp_src_port payload sport;
-        Tcp.Tcp_wire.set_tcp_dst_port payload dport
+        Tcp.Tcp_wire.set_src_port payload sport;
+        Tcp.Tcp_wire.set_dst_port payload dport
       | `ICMP id ->
         (* in the case of TCP and UDP, we can't fix the checksum here
            because we need to also include information on the pseudoheader,
            so we do it later.  But for ICMP, we can do it here (and should,
            since this is our last chance to get our hands on the payload). *)
-        Icmpv4_wire.set_icmpv4_id payload id;
-        Icmpv4_wire.set_icmpv4_csum payload 0x0000;
-        Icmpv4_wire.set_icmpv4_csum payload (Tcpip_checksum.ones_complement payload)
+        Cstruct.BE.set_uint16 payload 4 id; (* ID in echo request/reply *)
+        Icmpv4_wire.set_checksum payload 0x0000;
+        Icmpv4_wire.set_checksum payload (Tcpip_checksum.ones_complement payload)
     end;
     payload
 
@@ -206,8 +206,8 @@ module Make(N : Mirage_nat.TABLE) = struct
         * (which might be incorrect due to truncation of the ICMP error message),
         * retrieve this value from the ICMP payload, which is also the inner IP header.
         * This is replicating some non-exposed logic from the tcpip library's Ipv4_packet module. *)
-       let original_inner_ipv4_header_length = 20 + (Cstruct.length inner_ip.options) in
-       let original_inner_ipv4_total_length = Ipv4_wire.get_ipv4_len icmp_payload in
+       let original_inner_ipv4_header_length = Ipv4_wire.sizeof_ipv4 + (Cstruct.length inner_ip.options) in
+       let original_inner_ipv4_total_length = Ipv4_wire.get_len icmp_payload in
        let original_inner_ipv4_payload_length = original_inner_ipv4_total_length - original_inner_ipv4_header_length in
        (* Now we can reassemble the translated inner packet
         * with the correct IP and port information. *)
@@ -266,7 +266,6 @@ module Make(N : Mirage_nat.TABLE) = struct
 
 
   let translate table packet =
-    MProf.Trace.label "Nat_rewrite.translate";
     match packet with
     | `IPv4 (ip, (`TCP _ as transport)) -> translate_by_transport table (module TCP) ip transport
     | `IPv4 (ip, (`UDP _ as transport)) -> translate_by_transport table (module UDP) ip transport
