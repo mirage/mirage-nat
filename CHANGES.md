@@ -1,3 +1,6 @@
+## v3.0.2
+- adapt to tcpip 8.0.0 API change (#49 @hannesm)
+
 ## v3.0.1 (2022-11-08)
 - fix Mirage_nat.is_port_free and add a test (#48 @hannesm)
 
