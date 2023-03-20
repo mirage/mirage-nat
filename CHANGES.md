@@ -1,4 +1,4 @@
-## v3.0.2
+## v3.0.2 (2023-03-20)
 - adapt to tcpip 8.0.0 API change (#49 @hannesm)
 
 ## v3.0.1 (2022-11-08)
