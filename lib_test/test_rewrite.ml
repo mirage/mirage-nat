@@ -372,9 +372,9 @@ let test_udp_icmp_error () =
   let replace_udp_checksum ~new_checksum
       (`IPv4 (_, (`ICMP (_, icmp_internal_payload)))) =
     let transport_header = Cstruct.shift icmp_internal_payload
-        (((Ipv4_wire.get_ipv4_hlen_version icmp_internal_payload) land 0x0f) * 4)
+        (((Ipv4_wire.get_hlen_version icmp_internal_payload) land 0x0f) * 4)
     in
-    Udp_wire.set_udp_checksum transport_header new_checksum;
+    Udp_wire.set_checksum transport_header new_checksum;
   in
   let t = Rewriter.empty ~tcp_size:10 ~udp_size:10 ~icmp_size:10 in
   let payload = Cstruct.create 0 in

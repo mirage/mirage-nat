@@ -54,7 +54,6 @@ module Storage = struct
     type nonrec channel = transport_channel channel
 
     let lookup t key =
-      MProf.Trace.label "Mirage_nat_lru.lookup.read";
       let table = L.table t in
       match L.LRU.find key table with
       | None -> None
@@ -63,7 +62,6 @@ module Storage = struct
     (* cases that should result in a valid mapping:
        neither side is already mapped *)
     let insert t mappings =
-      MProf.Trace.label "Mirage_nat_lru.insert";
       let table = L.table t in
       match mappings with
       | [] -> Ok ()
