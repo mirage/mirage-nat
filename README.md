@@ -51,4 +51,4 @@ To see more console output, try increasing the log level with the `-l` argument 
 
 # Users
 
-[qubes-mirage-firewall](https://github.com/talex5/qubes-mirage-firewall), the unikernel firewall for [QubesOS](https://qubes-os.org), uses mirage-nat to provide network address translation for guest domains.
+[qubes-mirage-firewall](https://github.com/mirage/qubes-mirage-firewall), the unikernel firewall for [QubesOS](https://qubes-os.org), uses mirage-nat to provide network address translation for guest domains.
