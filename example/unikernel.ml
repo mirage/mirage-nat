@@ -14,7 +14,7 @@ module Main
     (Public_arpv4 : Arp.S) (Private_arpv4 : Arp.S)
     (Public_ipv4 : Tcpip.Ip.S with type ipaddr = Ipaddr.V4.t and type prefix = Ipaddr.V4.Prefix.t)
     (Private_ipv4 : Tcpip.Ip.S with type ipaddr = Ipaddr.V4.t and type prefix = Ipaddr.V4.Prefix.t)
-    (Random : Mirage_random.S) (Clock : Mirage_clock.MCLOCK)
+    (Random : Mirage_crypto_rng_mirage.S) (Clock : Mirage_clock.MCLOCK)
   = struct
 
   (* Use a NAT table implementation which expires entries in response
@@ -139,7 +139,7 @@ module Main
       let public_ip = Public_ipv4.src public_ipv4 ~dst:Util.(get_dst packet) in
       (* TODO: this may generate low-numbered source ports, which may be treated
          with suspicion by other nodes on the network *)
-      let port_gen () = Some (Cstruct.BE.get_uint16 (Random.generate 2) 0) in
+      let port_gen () = Some (String.get_uint16_be (Random.generate 2) 0) in
       match Nat.add table packet public_ip port_gen `NAT with
       | Error e ->
         Log.debug (fun f -> f "Failed to add a NAT rule: %a" Mirage_nat.pp_error e);

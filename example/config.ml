@@ -1,4 +1,4 @@
-(* mirage >= 4.6.0 & < 4.8.0 *)
+(* mirage >= 4.7.0 & < 4.8.0 *)
 open Mirage
 
 let public_ipv4_gw = runtime_arg ~pos:__POS__ "Unikernel.public_ipv4_gw"
