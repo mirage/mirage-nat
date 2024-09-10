@@ -28,27 +28,22 @@ The included `example/` directory contains an example MirageOS unikernel which u
 
 ## Network Setup
 
-To get started, you'll need a "public" network (one from which the Internet is accessible) and a "private" network (one which doesn't have outside access; this will be provided by the unikernel once it's online).  Configure the unikernel with the correct public network information, and an IP address on the private network.  For example, to set up a unikernel with a public network on 192.168.3.1/24, and a private 10.0.0.0/24 network, if configured for Xen:
+To get started, you'll need a "public" network (one from which the Internet is accessible) and a "private" network (one which doesn't have outside access; this will be provided by the unikernel once it's online).  The public network, public gateway, and the private network will be defined at runtime, therefore you can follow the usual MirageOS workflow:
 
 ```
-mirage configure -t xen --public-ipv4=192.168.3.1/24 --public-ipv4-gateway=192.168.3.254 --private-ipv4=10.0.0.1/24
-```
-
-Then follow the usual MirageOS workflow:
-
-```
+mirage configure -t hvt
 make depend
 make
 ```
 
-and start the unikernel as appropriate for the hypervisor:
+and start the unikernel with the runtime arguments:
 
 ```
-sudo xl create simple_nat.xl -c
+solo5-hvt --net:private=service0 --net:public=service1 simple-nat.hvt --public-ipv4=192.168.3.1/24 --public-ipv4-gateway=192.168.3.254 --private-ipv4=10.0.0.1/24
 ```
 
-To see more console output, try increasing the log level with the `-l` argument to `mirage configure`.
+To see more console output, try increasing the log level with the `-l` argument.
 
 # Users
 
-[qubes-mirage-firewall](https://github.com/talex5/qubes-mirage-firewall), the unikernel firewall for [QubesOS](https://qubes-os.org), uses mirage-nat to provide network address translation for guest domains.
+[qubes-mirage-firewall](https://github.com/mirage/qubes-mirage-firewall), the unikernel firewall for [QubesOS](https://qubes-os.org), uses mirage-nat to provide network address translation for guest domains.

@@ -1,4 +1,7 @@
+(* mirage >= 4.7.0 & < 4.8.0 *)
 open Mirage
+
+let public_ipv4_gw = runtime_arg ~pos:__POS__ "Unikernel.public_ipv4_gw"
 
 (* we need two network interfaces: a public side and a private side *)
 (* a bit of magic: currently, multiple networks only work on Unix and Xen
@@ -15,8 +18,8 @@ let private_netif =
          (netif ~group:"private" "1"))
 
 (* build ethernet interfaces on top of those network interfaces *)
-let public_ethernet = etif public_netif
-let private_ethernet = etif private_netif
+let public_ethernet = ethif public_netif
+let private_ethernet = ethif private_netif
 
 (* use the functional address resolution protocol *)
 let public_arpv4 = arp public_ethernet
@@ -40,11 +43,12 @@ let packages = [
 (* our unikernel needs to know about physical network, ethernet, arp, and ipv4
    modules for each interface. Even though these modules will be the same for
    both interfaces in our case, we have to pass them separately. *)
-let main = foreign "Unikernel.Main" ~packages (network  @-> network  @->
-                                               ethernet @-> ethernet @->
-                                               arpv4    @-> arpv4    @->
-                                               ipv4     @-> ipv4     @->
-                                               random   @-> mclock   @-> job)
+let main = main "Unikernel.Main" ~packages ~runtime_args:[ public_ipv4_gw; ]
+           (network  @-> network  @->
+            ethernet @-> ethernet @->
+            arpv4    @-> arpv4    @->
+            ipv4     @-> ipv4     @->
+            random   @-> mclock   @-> job)
 
 (* we need to pass each of the network-related impls we've made to the
    unikernel, so that it can start the appropriate listeners. *)
