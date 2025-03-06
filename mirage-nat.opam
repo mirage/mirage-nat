@@ -34,3 +34,4 @@ translation](https://tools.ietf.org/html/rfc2663).  It is intended for use in
 [tcpip](https://github.com/mirage/mirage-tcpip), the network stack used by
 default in MirageOS unikernels.
 """
+x-maintenance-intent: [ "(latest)" ]
