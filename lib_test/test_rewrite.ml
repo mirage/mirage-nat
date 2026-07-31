@@ -637,6 +637,27 @@ let fragmentation = [
   "of_ipv4_packet reassembles", `Quick, test_of_ipv4_packet_reassembly_basic ;
 ]
 
+(* The size comes from to_cstruct rather than from arithmetic, so the test stays
+   honest if the header layout ever changes. *)
+let test_into_cstruct_headers_only () =
+  let packet = gen_icmp 0 in
+  match Nat_packet.to_cstruct ~mtu:9000 packet with
+  | Ok [ data ] ->
+    let size = Cstruct.length data in
+    (match Nat_packet.into_cstruct packet (Cstruct.create size) with
+     | Ok (written, []) ->
+       Alcotest.(check int) "writes the whole packet" size written
+     | Ok (_, _ :: _) -> Alcotest.fail "fragmented a packet that fits"
+     | Error e ->
+       Alcotest.fail (Fmt.str "into_cstruct failed: %a" Nat_packet.pp_error e))
+  | Ok _ -> Alcotest.fail "to_cstruct fragmented at a 9000 byte mtu"
+  | Error e -> Alcotest.fail (Fmt.str "to_cstruct failed: %a" Nat_packet.pp_error e)
+
+let empty_payload = [
+  "into_cstruct fits a payload-free packet in its headers", `Quick,
+  test_into_cstruct_headers_only ;
+]
+
 let free_port = [
   "there is a free port", `Quick, test_free_port ;
 ]
@@ -650,5 +671,6 @@ let () =
     "add_redirect", add_redirect;
     "many_entries", many_entries;
     "fragmentation", fragmentation;
+    "empty payload", empty_payload;
     "free port", free_port;
   ]
