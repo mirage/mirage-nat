@@ -22,8 +22,8 @@ val to_cstruct : ?mtu:int -> t -> (Cstruct.t list, error) result
     It returns a list of fragments to be sent, or an error if fragmentation
     was needed, but disallowed by the provided ip header. *)
 
-val size_of : t -> int
-(** [size_of packet] is the number of bytes [packet] takes once serialized. *)
+val length : t -> int
+(** [length packet] is the number of bytes [packet] takes once serialized. *)
 
 val into_cstruct : t -> Cstruct.t -> (int * Cstruct.t list, error) result
 (** [into_cstruct packet buf] attempts to serialize [packet] into [buf].
