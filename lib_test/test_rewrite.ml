@@ -658,8 +658,80 @@ let empty_payload = [
   test_into_cstruct_headers_only ;
 ]
 
+(* The IPv4 [off] field carries the fragment offset in its low thirteen bits and
+   two flags above them: don't-fragment at 0x4000 and more-fragments at 0x2000.
+   Anything that rewrites the field as a whole has to put back the bits it did
+   not mean to touch.
+
+   Reading the flag back off the emitted header, rather than off the record we
+   passed in, is the whole point: the question is what goes on the wire. *)
+let emitted_off packet buf written =
+  match Ipv4_packet.Unmarshal.of_cstruct (Cstruct.sub buf 0 written) with
+  | Ok (ip, _) -> ip.Ipv4_packet.off
+  | Error e ->
+    Alcotest.fail
+      (Fmt.str "could not parse back the header written for %a: %s"
+         Nat_packet.pp packet e)
+
+let with_dont_fragment () =
+  let `IPv4 (ip, transport) = gen_icmp 100 in
+  `IPv4 ({ ip with off = 0x4000 }, transport)
+
+let test_into_cstruct_keeps_dont_fragment () =
+  (* A packet that fits needs no fragmenting, so the flag has no work to do
+     here -- but it is the sender's instruction to every router downstream, and
+     dropping it silently turns path MTU discovery off for the whole flow. *)
+  let packet = with_dont_fragment () in
+  let buf = Cstruct.create 1500 in
+  match Nat_packet.into_cstruct packet buf with
+  | Error e ->
+    Alcotest.fail (Fmt.str "into_cstruct failed: %a" Nat_packet.pp_error e)
+  | Ok (_, _ :: _) ->
+    Alcotest.fail "fragmented a packet with room to spare"
+  | Ok (written, []) ->
+    let off = emitted_off packet buf written in
+    Alcotest.(check bool) "don't fragment survives into_cstruct"
+      true (off land 0x4000 > 0)
+
+let test_to_cstruct_keeps_dont_fragment () =
+  (* The same packet through the other entry point of the same module. The two
+     are meant to differ only in who owns the buffer. *)
+  let packet = with_dont_fragment () in
+  match Nat_packet.to_cstruct ~mtu:9000 packet with
+  | Error e ->
+    Alcotest.fail (Fmt.str "to_cstruct failed: %a" Nat_packet.pp_error e)
+  | Ok [] | Ok (_ :: _ :: _) ->
+    Alcotest.fail "to_cstruct did not produce exactly one buffer"
+  | Ok [ data ] ->
+    let off = emitted_off packet data (Cstruct.length data) in
+    Alcotest.(check bool) "don't fragment survives to_cstruct"
+      true (off land 0x4000 > 0)
+
+let test_into_cstruct_sets_more_fragments () =
+  (* The other half of the field, and the reason it is written at all: a first
+     fragment must say that more follow. Whatever preserves the flag above must
+     not cost this. *)
+  let packet = gen_icmp 1472 in
+  let buf = Cstruct.create 1400 in
+  match Nat_packet.into_cstruct packet buf with
+  | Error e ->
+    Alcotest.fail (Fmt.str "into_cstruct failed: %a" Nat_packet.pp_error e)
+  | Ok (_, []) -> Alcotest.fail "a buffer too small for the packet left nothing over"
+  | Ok (written, _ :: _) ->
+    let off = emitted_off packet buf written in
+    Alcotest.(check bool) "more fragments is set on the first fragment"
+      true (off land 0x2000 > 0);
+    Alcotest.(check int) "the first fragment sits at offset zero"
+      0 (off land 0x1fff)
+
 let free_port = [
   "there is a free port", `Quick, test_free_port ;
+]
+
+let dont_fragment = [
+  "into_cstruct keeps don't fragment", `Quick, test_into_cstruct_keeps_dont_fragment ;
+  "to_cstruct keeps don't fragment", `Quick, test_to_cstruct_keeps_dont_fragment ;
+  "into_cstruct still sets more fragments", `Quick, test_into_cstruct_sets_more_fragments ;
 ]
 
 let () =
@@ -673,4 +745,5 @@ let () =
     "fragmentation", fragmentation;
     "empty payload", empty_payload;
     "free port", free_port;
+    "don't fragment", dont_fragment;
   ]
