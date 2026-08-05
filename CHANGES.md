@@ -1,3 +1,9 @@
+## v3.1.0 (2026-08-05)
+- fix for packets without payload (#53 @palainp)
+- fix that DF flag is preserved (#55 @palainp, fixes #52)
+- add "length" function (#54 @palainp)
+- various fixes to the example unikernel
+
 ## v3.0.2 (2023-03-20)
 - adapt to tcpip 8.0.0 API change (#49 @hannesm)
 
