@@ -193,8 +193,7 @@ let into_cstruct ((`IPv4 (ip, transport)):t) full_buffer =
       (write_transport_header_and_payload transport)
       (fun (written, leftover) ->
          let need_fragment = Cstruct.length leftover > 0 in
-         let off = if need_fragment then 0x2000 else 0x0000 in
-         let ip' = { ip with off } in
+         let ip' = if need_fragment then { ip with off = 0x2000 } else ip in
          (* Write the IP header into the first part of the buffer. *)
          match Ipv4_packet.Marshal.into_cstruct ~payload_len:written ip' full_buffer with
          | Error s -> Error (fun f -> Fmt.pf f "Error writing IPv4 header: %s" s)
