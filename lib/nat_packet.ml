@@ -142,8 +142,11 @@ let into_cstruct ((`IPv4 (ip, transport)):t) full_buffer =
   else begin
     (* otherwise: first packet, and use Fragments to produce other ones *)
     (* copy the payload into the provided buffer, then write the correct transport header *)
-    (* let's assume transport header fits into first packet *)
-    assert (mtu > ip_header_len + transport_header_len);
+    (* A packet with no payload fits in exactly its headers. The strict
+       inequality only makes sense when there is a payload to place. *)
+    assert (mtu >= ip_header_len + transport_header_len);
+    assert (transport_payload_len = 0
+            || mtu > ip_header_len + transport_header_len);
     let this_transport_payload_len =
       min transport_payload_len (mtu - ip_header_len - transport_header_len)
     in
