@@ -127,13 +127,18 @@ let to_cstruct ?(mtu = 1500) ((`IPv4 (ip, transport)):t) =
     let frags = if need_fragment then Fragments.fragment ~mtu ip rest else [] in
     Ok (Cstruct.append ip_header first :: frags)
 
-let into_cstruct ((`IPv4 (ip, transport)):t) full_buffer =
+let length ((`IPv4 (ip, transport)):t) =
+  let ip_header_len = Ipv4_wire.sizeof_ipv4 + Cstruct.length ip.Ipv4_packet.options in
+  let transport_header_len, transport_payload_len = decompose_transport transport in
+  ip_header_len + transport_header_len + transport_payload_len
+
+let into_cstruct ((`IPv4 (ip, transport)) as packet :t) full_buffer =
   let {Ipv4_packet.src; dst; _} = ip in
   let mtu = Cstruct.length full_buffer in
   (* Calculate required buffer size *)
   let ip_header_len = Ipv4_wire.sizeof_ipv4 + Cstruct.length ip.Ipv4_packet.options in
   let transport_header_len, transport_payload_len = decompose_transport transport in
-  let total_len = ip_header_len + transport_header_len + transport_payload_len in
+  let total_len = length packet in
   let need_fragment = total_len > mtu in
   (* short way out: don't fragment set and buffer too small *)
   let dont_fragment = ip.off land 0x4000 > 0 in
